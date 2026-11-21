@@ -485,3 +485,27 @@ delimiters. Emulation page: terminal, ANSI colour, xterm-256color, use colour sc
 "Map a Key...", Edit, Delete; Backspace sends delete, Delete sends backspace, CUA hotkeys. Window page: vertical scroll bar,
 disable resize, always on top, title bar. Not built: Jump scroll, Minimize drawing, Shift forces local mouse, Position cursor
 on click, alternate keyboard emulation, horizontal scroll bar, button bar choice, initial position.
+
+## Round 37 — the pending items of Round 36 (PENDENCIAS.md)
+
+- Public Key Authentication Failed: with an identity file chosen, ssh runs with -v; the "debug1:" lines (and "Authenticated to",
+  "Transferred:") are kept off the screen unless Trace Options asks for them. "Offering public key" of that file followed by
+  "Authentications that can continue" without "Server accepts key" opens the window. Its wording is an estimate.
+- Global Options > ANSI Color: "Color scheme overrides ANSI color" (on by default, Global.ini "Color Scheme Overrides Ansi Color"=1):
+  with a colour scheme in use ANSI black / white are drawn as the scheme's background / text. How far the original goes is not known.
+- Tools > Export Public Key from Certificate: X.509 certificate (PEM, DER, PFX / P12 through Windows without password) to an OpenSSH
+  line for RSA, ECDSA and Ed25519. Menu order and mnemonic from Menus/default.mnu.
+- Kermit and Zmodem: new engines (`kermit.rs`, `zmodem.rs`) behind the same progress window as Xmodem / Ymodem. Zmodem upload list and
+  Start Zmodem Upload send the session's upload command ("rz") first; a host's sz request starts a download by itself (Session
+  Options > X/Y/Zmodem can turn that off). Loopback tests only.
+- Change Configuration Passphrase: saved passwords and key passphrases are encrypted with DPAPI plus the passphrase as entropy
+  ("dpapi2:"); a verifier in the settings is checked when Yetty starts, before any session opens (start-up sessions wait for it).
+  Empty new passphrase removes it. Forgetting it loses the saved passwords.
+- Menu mnemonics: captions and letters read from the original's Menus/default.mnu. Alt+letter opens the menu bar entries (not when
+  the session uses Alt as Meta), letters choose items of an open menu, underlines show while Alt is down or a menu is open.
+- Global Options > General: "Sort alphabetically" check box (the original's wording, read from SecureCRT.exe) instead of a list.
+- Terminal options: jump scroll (output drawn every 120 ms), minimize drawing (every 50 ms), mouse reporting to programs that ask
+  for it (X10, normal, button and any motion; default and SGR encoding; wheel as buttons 4 / 5) with "Shift forces local mouse",
+  position cursor on click (arrow keys), alternate keyboard (None / Linux / Xterm R5-VT220 for F1-F5), horizontal scroll bar
+  (fixed-size terminal wider than the window), named button bars (context menu of the plus button; chosen in Session Options >
+  Window) and initial position of the window. Mouse reporting is new: before, no click reached the program.

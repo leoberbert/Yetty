@@ -69,6 +69,8 @@ pub struct GlobalOpts {
     pub initial_send_target: u8,
     /// ANSI Color
     pub ansi_palette_name: String,
+    /// Global.ini "Color Scheme Overrides Ansi Color": the scheme's text and background replace ANSI white and black
+    pub scheme_overrides_ansi: bool,
     pub custom_palettes: Vec<(String, Vec<[u8; 3]>)>,
 }
 
@@ -112,6 +114,7 @@ impl Default for GlobalOpts {
             swap_enter: false,
             initial_send_target: 0,
             ansi_palette_name: "Standard".into(),
+            scheme_overrides_ansi: true,
             custom_palettes: Vec::new(),
         }
     }
@@ -314,6 +317,7 @@ pub fn window(ctx: &egui::Context, st: &mut Settings, gs: &mut GlobalState) -> G
             if !ok {
                 *st = orig;
                 config::set_ansi_palette(pal);
+                config::set_scheme_overrides_ansi(st.global.scheme_overrides_ansi);
             }
         }
         // the next opening starts on the same page, with fresh lists
@@ -530,16 +534,7 @@ fn page(ui: &mut egui::Ui, st: &mut Settings, gs: &mut GlobalState, out: &mut Gl
                 let g = &mut st.global;
                 off_check(ui, true, "Use dockable Session Manager");
                 ui.checkbox(&mut g.show_sm_on_startup, "Show Session Manager or Connect dialog on startup");
-                ui.horizontal(|ui| {
-                    ui.label("Session list sort order:");
-                    egui::ComboBox::from_id_salt("global_sort")
-                        .width(120.0)
-                        .selected_text(if g.sort_alphabetical { "Alphabetically" } else { "Manually" })
-                        .show_ui(ui, |ui| {
-                            ui.selectable_value(&mut g.sort_alphabetical, true, "Alphabetically");
-                            ui.selectable_value(&mut g.sort_alphabetical, false, "Manually");
-                        });
-                });
+                ui.checkbox(&mut g.sort_alphabetical, "Sort alphabetically");
                 ui.checkbox(&mut g.save_tree_state, "Save expanded folder state for session list");
                 off_check(ui, true, "When a session is renamed/moved, update sessions that use it as a firewall");
                 ui.checkbox(&mut g.new_session_wizard, "New session uses wizard");
@@ -1148,6 +1143,9 @@ fn status_columns(ui: &mut egui::Ui, g: &mut GlobalOpts, gs: &mut GlobalState) {
 fn ansi_page(ui: &mut egui::Ui, st: &mut Settings, gs: &mut GlobalState) {
     let mut pal = config::ansi_palette();
     let mut changed = false;
+    group(ui, "Color scheme", |ui| {
+        changed_scheme_flag(ui, st);
+    });
     group(ui, "Palette name", |ui| {
         ui.horizontal(|ui| {
             let mut name = st.global.ansi_palette_name.clone();
@@ -1594,4 +1592,10 @@ fn delete_host_key(k: &HostKey) -> Result<(), String> {
         out.push_str(nl);
     }
     std::fs::write(&path, out).map_err(|e| format!("Could not write {}: {e}", path.display()))
+}
+
+fn changed_scheme_flag(ui: &mut egui::Ui, st: &mut Settings) {
+    if ui.checkbox(&mut st.global.scheme_overrides_ansi, "Color scheme overrides ANSI color").on_hover_text("With a color scheme in use, ANSI black is drawn as the scheme's background and ANSI white as its text color").changed() {
+        config::set_scheme_overrides_ansi(st.global.scheme_overrides_ansi);
+    }
 }

@@ -1162,6 +1162,12 @@ fn page_body(ui: &mut egui::Ui, page: &str, d: &mut OptionsDlg, st: &mut Setting
             });
             group(ui, "Mouse", |ui| {
                 check_tip(ui, &mut d.cfg.send_wheel_remote, "Send scroll wheel events to remote");
+                check_tip(ui, &mut d.cfg.mouse_report, "Send mouse events to programs that ask for them");
+                ui.horizontal(|ui| {
+                    ui.add_space(20.0);
+                    ui.add_enabled(d.cfg.mouse_report, egui::Checkbox::new(&mut d.cfg.shift_local_mouse, "Shift forces local mouse"));
+                });
+                check_tip(ui, &mut d.cfg.cursor_click, "Position cursor on click (command line)");
             });
             group(ui, "Anti-idle", |ui| {
                 ui.horizontal(|ui| {
@@ -1186,6 +1192,18 @@ fn page_body(ui: &mut egui::Ui, page: &str, d: &mut OptionsDlg, st: &mut Setting
             });
         }
         "emulation" => {
+            group(ui, "Display and keyboard", |ui| {
+                check_tip(ui, &mut d.cfg.jump_scroll, "Jump scroll (fast output is shown in jumps)");
+                check_tip(ui, &mut d.cfg.minimize_drawing, "Minimize drawing (redraw at most every 50 ms)");
+                ui.horizontal(|ui| {
+                    ui.label("Alternate keyboard:");
+                    egui::ComboBox::from_id_salt("alt_keyboard").width(150.0).selected_text(d.cfg.alt_keyboard.clone()).show_ui(ui, |ui| {
+                        for k in ["None", "Linux", "Xterm R5 / VT220"] {
+                            ui.selectable_value(&mut d.cfg.alt_keyboard, k.to_string(), k);
+                        }
+                    });
+                });
+            });
             group(ui, "Emulation", |ui| {
                 ui.horizontal(|ui| {
                     ui.label("Terminal:");
@@ -1370,6 +1388,23 @@ fn page_body(ui: &mut egui::Ui, page: &str, d: &mut OptionsDlg, st: &mut Setting
         "window" => {
             group(ui, "Session window", |ui| {
                 check_tip(ui, &mut d.cfg.show_scrollbar, "Show vertical scroll bar");
+                check_tip(ui, &mut d.cfg.show_hscrollbar, "Show horizontal scroll bar (when the window is narrower than the terminal)");
+                ui.horizontal(|ui| {
+                    ui.checkbox(&mut d.cfg.initial_pos_on, "Initial position:");
+                    ui.add_enabled(d.cfg.initial_pos_on, egui::DragValue::new(&mut d.cfg.initial_x).prefix("x "));
+                    ui.add_enabled(d.cfg.initial_pos_on, egui::DragValue::new(&mut d.cfg.initial_y).prefix("y "));
+                    ui.weak("(the Yetty window moves there when the session opens)");
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Button bar:");
+                    let shown = if d.cfg.button_bar.is_empty() { "Default".to_string() } else { d.cfg.button_bar.clone() };
+                    egui::ComboBox::from_id_salt("session_button_bar").width(150.0).selected_text(shown).show_ui(ui, |ui| {
+                        ui.selectable_value(&mut d.cfg.button_bar, String::new(), "Default");
+                        for (n, _) in &st.button_bars {
+                            ui.selectable_value(&mut d.cfg.button_bar, n.clone(), n.as_str());
+                        }
+                    });
+                });
                 check_tip(ui, &mut d.cfg.resize_retain, "Disable resize");
                 check_tip(ui, &mut d.cfg.window_on_top, "Session window always on top");
                 ui.horizontal(|ui| {
@@ -1512,78 +1547,15 @@ fn page_body(ui: &mut egui::Ui, page: &str, d: &mut OptionsDlg, st: &mut Setting
             group(ui, "Xmodem", |ui| {
                 check_tip(ui, &mut d.cfg.xmodem_1k, "Send with 1K blocks (Xmodem-1K)");
             });
+            group(ui, "Zmodem", |ui| {
+                ui.label("Upload command (run on the host before Start Zmodem Upload):");
+                ui.add(egui::TextEdit::singleline(&mut d.cfg.zmodem_upload_cmd).desired_width(180.0));
+                check_tip(ui, &mut d.cfg.zmodem_auto_download, "Start a download when the host sends a Zmodem request (sz)");
+            });
         }
     }
 }
 
-pub fn mapped_keys_ui(ui: &mut egui::Ui, keys: &mut Vec<MappedKey>) {
-    ui.label("A mapped key sends a text instead of the normal key. Click Capture, then press the key (with Ctrl/Alt/Shift if needed).");
-    let cap_id = egui::Id::new("mapped_capture");
-    let mut capturing: Option<usize> = ui.data(|d| d.get_temp::<usize>(cap_id));
-    if let Some(i) = capturing {
-        let pressed = ui.input(|inp| {
-            inp.events.iter().find_map(|e| match e {
-                egui::Event::Key { key, pressed: true, modifiers, .. } => Some((*key, *modifiers)),
-                _ => None,
-            })
-        });
-        if let Some((key, m)) = pressed {
-            let mut name = String::new();
-            if m.ctrl {
-                name.push_str("Ctrl+");
-            }
-            if m.alt {
-                name.push_str("Alt+");
-            }
-            if m.shift {
-                name.push_str("Shift+");
-            }
-            name.push_str(key.name());
-            if let Some(k) = keys.get_mut(i) {
-                k.key = name;
-            }
-            capturing = None;
-        }
-        ui.ctx().request_repaint();
-    }
-    let mut remove = None;
-    egui::Grid::new("mapped_grid").num_columns(4).spacing([8.0, 4.0]).show(ui, |ui| {
-        ui.label(RichText::new("Key").size(11.5));
-        ui.label(RichText::new("Send (\\r = Enter, \\e = Esc)").size(11.5));
-        ui.label("");
-        ui.label("");
-        ui.end_row();
-        for (i, k) in keys.iter_mut().enumerate() {
-            let label = if capturing == Some(i) { "Press a key...".to_string() } else { k.key.clone() };
-            ui.add_enabled(false, egui::TextEdit::singleline(&mut label.clone()).desired_width(90.0));
-            ui.add(egui::TextEdit::singleline(&mut k.send).desired_width(140.0));
-            if ui.small_button("Capture").clicked() {
-                capturing = Some(i);
-            }
-            if ui.small_button("Delete").clicked() {
-                remove = Some(i);
-            }
-            ui.end_row();
-        }
-    });
-    if let Some(i) = remove {
-        keys.remove(i);
-        capturing = None;
-    }
-    if ui.button("Add...").clicked() {
-        keys.push(MappedKey { key: "F5".into(), func: "Send String".into(), send: String::new() });
-        capturing = Some(keys.len() - 1);
-    }
-    ui.data_mut(|d| match capturing {
-        Some(i) => {
-            d.insert_temp(cap_id, i);
-        }
-        None => {
-            d.remove::<usize>(cap_id);
-        }
-    });
-}
-// ---------------------------------------------------------------------------
 // Field checks, like the original's: what is wrong is said in a message box and the dialog stays open.
 
 const BAD_NAME_CHARS: &str = "\\/:*?\"<>|";

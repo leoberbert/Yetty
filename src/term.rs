@@ -64,7 +64,7 @@ pub enum SshPrompt {
     /// "Are you sure you want to continue connecting (yes/no/[fingerprint])?" with the text before it
     HostKey { detail: String },
     /// "user@host's password:"
-    Password { label: String },
+    Password,
 }
 
 pub struct Session {
@@ -78,6 +78,14 @@ pub struct Session {
     pub cols: u16,
     pub scroll_offset: usize,
     scroll_accum: f32,
+    /// horizontal scroll offset in pixels (the horizontal scroll bar)
+    hscroll: f32,
+    /// the mouse button a remote program was told is down, and the last cell reported
+    mouse_down: Option<u8>,
+    mouse_last: (u16, u16),
+    /// output held back by jump scroll / minimize drawing
+    jump_pending: Vec<u8>,
+    jump_since: Option<Instant>,
     pub selection: Option<(VPos, VPos)>,
     pub find_hit: Option<(i64, u16, usize)>,
     pub log_path: Option<String>,
@@ -95,6 +103,12 @@ pub struct Session {
     /// A question of the ssh program that the person answers in a window (host key, password).
     pub prompt_req: Option<SshPrompt>,
     hk_block: bool,
+    dbg_acc: String,
+    dbg_cont: bool,
+    key_offered: Option<String>,
+    key_ok: bool,
+    /// The key (as ssh printed it) the server refused: shown in the "Public Key Authentication Failed" window.
+    pub pubkey_failed: Option<String>,
     /// Lines kept off the screen (ssh questions answered in windows), removed again from later redraws.
     hidden_lines: Vec<String>,
     prompt_done: Option<Instant>,
@@ -161,6 +175,11 @@ impl Session {
             cols,
             scroll_offset: 0,
             scroll_accum: 0.0,
+            hscroll: 0.0,
+            mouse_down: None,
+            mouse_last: (u16::MAX, u16::MAX),
+            jump_pending: Vec::new(),
+            jump_since: None,
             selection: None,
             find_hit: None,
             log_path: None,
@@ -176,6 +195,11 @@ impl Session {
             pw_waiting: false,
             prompt_req: None,
             hk_block: false,
+            dbg_acc: String::new(),
+            dbg_cont: false,
+            key_offered: None,
+            key_ok: false,
+            pubkey_failed: None,
             hidden_lines: Vec::new(),
             prompt_done: None,
             sftp_pending: String::new(),
@@ -219,6 +243,10 @@ impl Session {
     /// Feed what the connection delivered into the logon actions and the "wait for" buffer.
     fn note_text(&mut self, d: &[u8]) {
         let t = String::from_utf8_lossy(d).into_owned();
+        if self.watches_key() {
+            let c: String = t.chars().filter(|c| !c.is_control() || *c == '\n').collect();
+            self.scan_debug(&c);
+        }
         let clean: String = t.chars().filter(|c| !c.is_control() || *c == '\n').collect();
         self.recent.push_str(&clean);
         if self.recent.len() > 8000 {
@@ -247,8 +275,7 @@ impl Session {
                 && !lc.contains("[sudo]")
                 && self.connected_at.map(|t| t.elapsed() < Duration::from_secs(90)).unwrap_or(true)
             {
-                let label = tail.rsplit('\n').next().unwrap_or("").trim().to_string();
-                self.prompt_req = Some(SshPrompt::Password { label });
+                self.prompt_req = Some(SshPrompt::Password);
             }
         }
         // Without a saved password, remember what the person types at the next "password:" prompt.
@@ -435,10 +462,84 @@ impl Session {
         }
     }
 
+    /// The explicitly chosen identity file makes ssh run with -v so a refused key can be told apart.
+    fn watches_key(&self) -> bool {
+        self.cfg.protocol == config::Protocol::Ssh && !self.cfg.identity_file.trim().is_empty()
+    }
+
+    /// Keeps the -v messages (and the summary lines ssh prints at -v) off the screen unless the person asked for them.
+    fn strip_debug_lines(&mut self, text: String) -> String {
+        if self.cfg.ssh_verbose {
+            return text;
+        }
+        let mut out = String::new();
+        let mut rest = text.as_str();
+        loop {
+            if self.dbg_cont {
+                match rest.find('\n') {
+                    Some(i) => {
+                        rest = &rest[i + 1..];
+                        self.dbg_cont = false;
+                    }
+                    None => return out,
+                }
+            }
+            if rest.is_empty() {
+                break;
+            }
+            let (line, tail) = match rest.find('\n') {
+                Some(i) => (&rest[..=i], &rest[i + 1..]),
+                None => (rest, ""),
+            };
+            let clean = strip_escapes(line);
+            let t = clean.trim_start();
+            let is_dbg = t.starts_with("debug1:") || t.starts_with("Authenticated to ") || t.starts_with("Transferred:") || t.starts_with("Bytes per second");
+            if is_dbg {
+                if !line.ends_with('\n') {
+                    self.dbg_cont = true;
+                }
+            } else {
+                out.push_str(line);
+            }
+            rest = tail;
+        }
+        out
+    }
+
+    /// Reads the -v lines: "Offering public key" not followed by "Server accepts key" before the next
+    /// "Authentications that can continue" means the server refused the key.
+    fn scan_debug(&mut self, clean: &str) {
+        self.dbg_acc.push_str(clean);
+        while let Some(i) = self.dbg_acc.find('\n') {
+            let line: String = self.dbg_acc.drain(..=i).collect();
+            let l = line.trim();
+            if let Some(p) = l.find("Offering public key:") {
+                let key = l[p + "Offering public key:".len()..].trim().to_string();
+                let want = std::path::Path::new(self.cfg.identity_file.trim()).file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
+                self.key_offered = if !want.is_empty() && key.to_lowercase().contains(&want) { Some(key) } else { None };
+                self.key_ok = false;
+            } else if l.contains("Server accepts key") || l.contains("Authentication succeeded (publickey)") {
+                self.key_ok = true;
+            } else if l.contains("Authentications that can continue:") {
+                if let Some(k) = self.key_offered.take() {
+                    if !self.key_ok && self.pubkey_failed.is_none() {
+                        self.pubkey_failed = Some(k);
+                    }
+                }
+            }
+        }
+        if self.dbg_acc.len() > 4000 {
+            self.dbg_acc.clear();
+        }
+    }
+
     /// Remove the host key question and the "user@host's password:" line from what is drawn (they are asked
     /// in windows instead), and ssh's "Warning: Permanently added ... known hosts." note (the original shows none).
     fn hide_ssh_questions(&mut self, d: Vec<u8>) -> Vec<u8> {
         let mut text = String::from_utf8_lossy(&d).into_owned();
+        if self.watches_key() {
+            text = self.strip_debug_lines(text);
+        }
         // The pseudo console redraws its whole screen after a resize, hidden lines included: what was hidden once
         // stays hidden (the line is left empty, so the rows of the redraw keep their places).
         for h in &self.hidden_lines {
@@ -533,7 +634,7 @@ impl Session {
         self.prompt_done = Some(Instant::now());
         match answer {
             Some(t) => {
-                if matches!(was, Some(SshPrompt::Password { .. })) && !t.is_empty() {
+                if matches!(was, Some(SshPrompt::Password)) && !t.is_empty() {
                     self.typed_password = Some(t.to_string());
                 }
                 self.pw_waiting = false;
@@ -649,6 +750,26 @@ impl Session {
         }
     }
 
+    /// Jump scroll shows output in jumps (every 120 ms), minimize drawing at most every 50 ms; a big backlog goes at once.
+    fn jump_due(&self) -> bool {
+        let wait = if self.cfg.jump_scroll { 120 } else { 50 };
+        self.jump_since.map(|t| t.elapsed() >= Duration::from_millis(wait)).unwrap_or(true) || self.jump_pending.len() > 256 * 1024
+    }
+
+    /// Give the screen what the host sent, keeping the scrolled-back view where it is when asked.
+    fn feed_screen(&mut self, d: &[u8]) {
+        let keep = if self.cfg.scroll_bottom_output { 0 } else { self.scroll_offset };
+        if self.cfg.scroll_bottom_output {
+            self.scroll_offset = 0;
+        }
+        self.parser.screen_mut().set_scrollback(0);
+        self.parser.process(d);
+        if keep > 0 {
+            self.parser.screen_mut().set_scrollback(keep);
+            self.scroll_offset = self.parser.screen().scrollback();
+        }
+    }
+
     /// Pull everything the connection delivered since the last frame.
     pub fn pump(&mut self) {
         self.pump_paste_queue();
@@ -695,6 +816,10 @@ impl Session {
         for ev in events {
             match ev {
                 ConnEvent::Connected => {
+                    self.dbg_acc.clear();
+                    self.dbg_cont = false;
+                    self.key_offered = None;
+                    self.key_ok = false;
                     let p = self.cfg.log_custom_connect.clone();
                     self.log_custom(&p);
                     self.status = Status::Connected;
@@ -718,6 +843,17 @@ impl Session {
                             }
                             continue;
                         }
+                    }
+                    // The host started a Zmodem send (sz): receive it without a menu command.
+                    if self.cfg.zmodem_auto_download && self.xfer.as_ref().map_or(true, |x| x.done) && crate::zmodem::Zmodem::is_start_sequence(&d) {
+                        let dir = if self.cfg.download_dir.trim().is_empty() { config::data_dir().join("downloads") } else { std::path::PathBuf::from(&self.cfg.download_dir) };
+                        let mut t = crate::transfer::Transfer::new_zmodem_receive(dir);
+                        let out = t.feed(&d);
+                        if let Some(c) = &self.conn {
+                            c.send(&out);
+                        }
+                        self.xfer = Some(t);
+                        continue;
                     }
                     // The ssh program's questions (host key, password) are asked in windows, so their text is kept
                     // off the screen; the logon logic still sees the original text.
@@ -760,18 +896,26 @@ impl Session {
                     if !ssh_like {
                         self.note_text(&d);
                     }
-                    let keep = if self.cfg.scroll_bottom_output { 0 } else { self.scroll_offset };
-                    if self.cfg.scroll_bottom_output {
-                        self.scroll_offset = 0;
-                    }
-                    self.parser.screen_mut().set_scrollback(0);
-                    self.parser.process(&d);
-                    if keep > 0 {
-                        self.parser.screen_mut().set_scrollback(keep);
-                        self.scroll_offset = self.parser.screen().scrollback();
-                    }
+                    let d = if self.cfg.jump_scroll || self.cfg.minimize_drawing {
+                        self.jump_pending.extend_from_slice(&d);
+                        self.jump_since.get_or_insert_with(Instant::now);
+                        if !self.jump_due() {
+                            self.ctx.request_repaint_after(Duration::from_millis(30));
+                            continue;
+                        }
+                        self.jump_since = None;
+                        std::mem::take(&mut self.jump_pending)
+                    } else {
+                        d
+                    };
+                    self.feed_screen(&d);
                 }
                 ConnEvent::Closed(why) => {
+                    if !self.jump_pending.is_empty() {
+                        self.jump_since = None;
+                        let held = std::mem::take(&mut self.jump_pending);
+                        self.feed_screen(&held);
+                    }
                     let p = self.cfg.log_custom_disconnect.clone();
                     self.log_custom(&p);
                     if !matches!(self.status, Status::Disconnected(_)) {
@@ -791,6 +935,14 @@ impl Session {
                     self.connected_at = None;
                 }
             }
+        }
+        // Jump scroll / minimize drawing: output held back is drawn once its time is up
+        if !self.jump_pending.is_empty() && self.jump_due() {
+            self.jump_since = None;
+            let held = std::mem::take(&mut self.jump_pending);
+            self.feed_screen(&held);
+        } else if !self.jump_pending.is_empty() {
+            self.ctx.request_repaint_after(Duration::from_millis(30));
         }
         if let Some(x) = self.xfer.as_mut() {
             let out = x.tick();
@@ -1191,13 +1343,21 @@ fn c32(c: Rgb) -> Color32 {
     Color32::from_rgb(c[0], c[1], c[2])
 }
 
-fn resolve(color: vt100::Color, default: Rgb, bold: bool, ansi: bool, truecolor: bool) -> Rgb {
+fn resolve(color: vt100::Color, default: Rgb, bold: bool, ansi: bool, truecolor: bool, scheme: Option<(Rgb, Rgb)>) -> Rgb {
     if !ansi {
         return default;
     }
     match color {
         vt100::Color::Default => default,
         vt100::Color::Idx(i) => {
+            if let Some((fg, bg)) = scheme {
+                if !bold && i == 7 {
+                    return fg;
+                }
+                if i == 0 {
+                    return bg;
+                }
+            }
             let i = if bold && i < 8 { i + 8 } else { i };
             config::xterm256(i)
         }
@@ -1240,6 +1400,8 @@ pub struct ViewOptions<'a> {
     /// the web browser program that opens URLs ("" = the system's default browser)
     pub browser: &'a str,
 }
+
+const HSCROLLBAR_H: f32 = 14.0;
 
 /// Open a URL in `browser`, or in the system's default browser when it is empty.
 pub fn open_url(url: &str, browser: &str) {
@@ -1320,6 +1482,17 @@ pub fn show(ui: &mut egui::Ui, s: &mut Session, opts: &ViewOptions, rect: Rect) 
         )
     };
     s.resize(rows, cols);
+    // the horizontal scroll bar: a fixed terminal wider than the window scrolls sideways
+    let view_w = text_rect.width();
+    let full_w = cols as f32 * cw;
+    let need_h = s.cfg.show_hscrollbar && s.cfg.resize_retain && !s.cfg.scale_font && full_w > view_w + 0.5;
+    let text_rect = if need_h {
+        s.hscroll = s.hscroll.clamp(0.0, full_w - view_w);
+        Rect::from_min_max(Pos2::new(text_rect.min.x - s.hscroll, text_rect.min.y), Pos2::new(text_rect.max.x, text_rect.max.y - HSCROLLBAR_H))
+    } else {
+        s.hscroll = 0.0;
+        text_rect
+    };
 
     let id = egui::Id::new(("terminal", s.id));
     let resp = ui.interact(Rect::from_min_max(rect.min, Pos2::new(rect.max.x - sbw, rect.max.y)), id, Sense::click_and_drag());
@@ -1352,14 +1525,44 @@ pub fn show(ui: &mut egui::Ui, s: &mut Session, opts: &ViewOptions, rect: Rect) 
     }
 
     let (fg_def, bg_def) = if s.cfg.use_color_scheme { config::scheme(&s.cfg.color_scheme) } else { ([0xc0, 0xc0, 0xc0], [0, 0, 0]) };
+    // "Color scheme overrides ANSI color": with a scheme in use, ANSI white / black take its text / background colors
+    let scheme_ov = if s.cfg.use_color_scheme && config::scheme_overrides_ansi() { Some((fg_def, bg_def)) } else { None };
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 0.0, c32(bg_def));
 
+    // a program that asked for the mouse gets it, unless Shift keeps it local ("Shift forces local mouse")
+    let shift_held = ui.input(|i| i.modifiers.shift);
+    let remote = s.cfg.mouse_report
+        && s.parser.screen().mouse_protocol_mode() != vt100::MouseProtocolMode::None
+        && s.scroll_offset == 0
+        && !(s.cfg.shift_local_mouse && shift_held);
+    let local = !remote;
+    if !remote {
+        s.mouse_down = None;
+    } else if resp.hovered() || s.mouse_down.is_some() {
+        report_mouse(ui, s, text_rect, cw, ch, cols, rows);
+    }
     // ----- mouse: wheel, selection --------------------------------------
     let sb_len = s.scrollback_len();
     if resp.hovered() || ui.rect_contains_pointer(rect) {
         let dy = ui.input(|i| i.smooth_scroll_delta.y);
-        if dy != 0.0 && s.cfg.send_wheel_remote && s.parser.screen().alternate_screen() {
+        if dy != 0.0 && remote {
+            // the program asked for the mouse: the wheel is buttons 4 / 5
+            let n = (dy / ch).round() as i32;
+            let sgr = s.parser.screen().mouse_protocol_encoding() == vt100::MouseProtocolEncoding::Sgr;
+            let at = pointer_pos.unwrap_or(text_rect.min);
+            let (c, r) = ((((at.x - text_rect.min.x) / cw).max(0.0) as u16).min(cols - 1), (((at.y - text_rect.min.y) / ch).max(0.0) as u16).min(rows - 1));
+            let b: u8 = if n > 0 { 64 } else { 65 };
+            for _ in 0..n.unsigned_abs().min(10) {
+                if sgr {
+                    s.send(format!("\x1b[<{};{};{}M", b, c + 1, r + 1).as_bytes());
+                } else if c + 1 <= 222 && r + 1 <= 222 {
+                    s.send(&[0x1b, b'[', b'M', 32 + b, 32 + (c + 1) as u8, 32 + (r + 1) as u8]);
+                }
+            }
+        } else if dy != 0.0 && need_h && ui.input(|i| i.modifiers.shift) {
+            s.hscroll = (s.hscroll - dy).clamp(0.0, (full_w - view_w).max(0.0));
+        } else if dy != 0.0 && s.cfg.send_wheel_remote && s.parser.screen().alternate_screen() {
             // full-screen programs get the wheel as arrow keys
             let n = (dy / ch).round() as i32;
             for _ in 0..n.abs().min(10) {
@@ -1382,7 +1585,7 @@ pub fn show(ui: &mut egui::Ui, s: &mut Session, opts: &ViewOptions, rect: Rect) 
     };
     // The drag only "starts" after the pointer has moved a few pixels, so the anchor is where the
     // button went down, not where the drag was noticed (that lost the first characters of a quick drag).
-    if resp.drag_started_by(egui::PointerButton::Primary) {
+    if local && resp.drag_started_by(egui::PointerButton::Primary) {
         let origin = ui.input(|i| i.pointer.press_origin()).or_else(|| resp.interact_pointer_pos());
         if let Some(p) = origin {
             let c = to_cell(p, s.scroll_offset);
@@ -1390,7 +1593,7 @@ pub fn show(ui: &mut egui::Ui, s: &mut Session, opts: &ViewOptions, rect: Rect) 
             s.find_hit = None;
         }
     }
-    if resp.dragged_by(egui::PointerButton::Primary) || resp.drag_stopped_by(egui::PointerButton::Primary) {
+    if local && (resp.dragged_by(egui::PointerButton::Primary) || resp.drag_stopped_by(egui::PointerButton::Primary)) {
         let now = ui.input(|i| i.pointer.latest_pos()).or_else(|| resp.interact_pointer_pos());
         if let (Some(p), Some((a, _))) = (now, s.selection) {
             // auto-scroll when dragging beyond the edges
@@ -1402,7 +1605,7 @@ pub fn show(ui: &mut egui::Ui, s: &mut Session, opts: &ViewOptions, rect: Rect) 
             s.selection = Some((a, to_cell(p, s.scroll_offset)));
         }
     }
-    if resp.drag_stopped() && opts.copy_on_select {
+    if local && resp.drag_stopped() && opts.copy_on_select {
         if let Some(t) = s.selected_text() {
             ui.ctx().copy_text(t);
         }
@@ -1418,7 +1621,7 @@ pub fn show(ui: &mut egui::Ui, s: &mut Session, opts: &ViewOptions, rect: Rect) 
     } else {
         None
     };
-    if resp.triple_clicked() {
+    if local && resp.triple_clicked() {
         if let Some(p) = resp.interact_pointer_pos() {
             let (v, _) = to_cell(p, s.scroll_offset);
             let line = ((v, 0), (v, cols - 1));
@@ -1431,7 +1634,7 @@ pub fn show(ui: &mut egui::Ui, s: &mut Session, opts: &ViewOptions, rect: Rect) 
                 }
             }
         }
-    } else if resp.double_clicked() {
+    } else if local && resp.double_clicked() {
         if let Some(p) = resp.interact_pointer_pos() {
             let (v, c) = to_cell(p, s.scroll_offset);
             let line: Vec<char> = s.line_text(v).chars().collect();
@@ -1456,10 +1659,21 @@ pub fn show(ui: &mut egui::Ui, s: &mut Session, opts: &ViewOptions, rect: Rect) 
                 }
             }
         }
-    } else if resp.clicked() {
+    } else if local && resp.clicked() {
         s.selection = None;
         if let Some(url) = &url_under {
             open_url(url, opts.browser);
+        } else if s.cfg.cursor_click && s.scroll_offset == 0 && !s.parser.screen().alternate_screen() {
+            // "Position cursor on click": arrow keys carry the cursor to the clicked column of its own line
+            if let Some(p) = resp.interact_pointer_pos() {
+                let (v, c) = to_cell(p, 0);
+                let (cur_row, cur_col) = s.parser.screen().cursor_position();
+                if v == cur_row as i64 && c != cur_col {
+                    let letter = if c > cur_col { 'C' } else { 'D' };
+                    let one = if s.parser.screen().application_cursor() { format!("\x1bO{letter}") } else { format!("\x1b[{letter}") };
+                    s.send(one.repeat((c as i32 - cur_col as i32).unsigned_abs() as usize).as_bytes());
+                }
+            }
         }
     }
 
@@ -1576,7 +1790,8 @@ pub fn show(ui: &mut egui::Ui, s: &mut Session, opts: &ViewOptions, rect: Rect) 
                         }
                         continue; // other Alt shortcuts belong to the menus
                     }
-                    if let Some(bytes) = key_bytes(key, modifiers, app_cursor, s.cfg.backspace_bs, &s.cfg.enter_sends, s.cfg.delete_sends_del, s.cfg.home_end_tilde) {
+                    let alt_kb = alt_function_key(&s.cfg.alt_keyboard, key, modifiers);
+                    if let Some(bytes) = alt_kb.or_else(|| key_bytes(key, modifiers, app_cursor, s.cfg.backspace_bs, &s.cfg.enter_sends, s.cfg.delete_sends_del, s.cfg.home_end_tilde)) {
                         s.send(&bytes);
                     }
                 }
@@ -1655,8 +1870,8 @@ pub fn show(ui: &mut egui::Ui, s: &mut Session, opts: &ViewOptions, rect: Rect) 
                 continue;
             }
             let width = if cell.is_wide() { 2 } else { 1 };
-            let mut fg = resolve(cell.fgcolor(), fg_def, cell.bold(), s.cfg.ansi_color, truecolor);
-            let mut bg = resolve(cell.bgcolor(), bg_def, false, s.cfg.ansi_color, truecolor);
+            let mut fg = resolve(cell.fgcolor(), fg_def, cell.bold(), s.cfg.ansi_color, truecolor, scheme_ov);
+            let mut bg = resolve(cell.bgcolor(), bg_def, false, s.cfg.ansi_color, truecolor, scheme_ov);
             let mut force_bold = false;
             if cell.inverse() {
                 std::mem::swap(&mut fg, &mut bg);
@@ -1763,6 +1978,22 @@ pub fn show(ui: &mut egui::Ui, s: &mut Session, opts: &ViewOptions, rect: Rect) 
     } else {
         egui::CursorIcon::Text
     };
+    if need_h {
+        let track = Rect::from_min_max(Pos2::new(rect.min.x, rect.max.y - HSCROLLBAR_H), Pos2::new(rect.max.x - sbw, rect.max.y));
+        let hb = ui.interact(track, id.with("hscrollbar"), Sense::click_and_drag());
+        let dark = (bg_def[0] as u32 + bg_def[1] as u32 + bg_def[2] as u32) < 384;
+        painter.rect_filled(track, 0.0, if dark { Color32::from_gray(45) } else { Color32::from_gray(230) });
+        let thumb_w = (track.width() * view_w / full_w).clamp(20.0, track.width());
+        let movable = (track.width() - thumb_w).max(1.0);
+        let thumb_x = track.min.x + movable * (s.hscroll / (full_w - view_w).max(1.0));
+        painter.rect_filled(Rect::from_min_size(Pos2::new(thumb_x, track.min.y + 3.0), Vec2::new(thumb_w, HSCROLLBAR_H - 6.0)), 4.0, if dark { Color32::from_gray(110) } else { Color32::from_gray(160) });
+        if hb.dragged() || hb.clicked() {
+            if let Some(p) = hb.interact_pointer_pos() {
+                let f = ((p.x - track.min.x - thumb_w / 2.0) / movable).clamp(0.0, 1.0);
+                s.hscroll = f * (full_w - view_w);
+            }
+        }
+    }
     // ----- scrollbar ------------------------------------------------------------
     if !s.cfg.show_scrollbar {
         if resp.hovered() {
@@ -1795,6 +2026,105 @@ pub fn show(ui: &mut egui::Ui, s: &mut Session, opts: &ViewOptions, rect: Rect) 
         ui.ctx().set_cursor_icon(pointer_icon);
     }
     resp
+}
+
+/// F1-F5 of the "Alternate keyboard" choices (None: the normal codes).
+fn alt_function_key(kind: &str, key: egui::Key, m: egui::Modifiers) -> Option<Vec<u8>> {
+    if m.ctrl || m.alt || m.shift {
+        return None;
+    }
+    let n = match key {
+        egui::Key::F1 => 0,
+        egui::Key::F2 => 1,
+        egui::Key::F3 => 2,
+        egui::Key::F4 => 3,
+        egui::Key::F5 => 4,
+        _ => return None,
+    };
+    match kind {
+        // the Linux console: ESC [ [ A .. E
+        "Linux" => Some(vec![0x1b, b'[', b'[', b'A' + n]),
+        // xterm R5 and the VT220: ESC [ 11~ .. 15~
+        "Xterm R5 / VT220" => Some(format!("\x1b[{}~", 11 + n).into_bytes()),
+        _ => None,
+    }
+}
+
+/// Tell a remote program about the mouse (xterm mouse reporting: X10 / normal / button-motion / any-motion, default or SGR).
+fn report_mouse(ui: &egui::Ui, s: &mut Session, text_rect: Rect, cw: f32, ch: f32, cols: u16, rows: u16) {
+    use vt100::{MouseProtocolEncoding, MouseProtocolMode};
+    let mode = s.parser.screen().mouse_protocol_mode();
+    let sgr = s.parser.screen().mouse_protocol_encoding() == MouseProtocolEncoding::Sgr;
+    let cell = |p: Pos2| -> (u16, u16) {
+        (
+            ((p.x - text_rect.min.x) / cw).floor().clamp(0.0, (cols - 1) as f32) as u16,
+            ((p.y - text_rect.min.y) / ch).floor().clamp(0.0, (rows - 1) as f32) as u16,
+        )
+    };
+    let events = ui.input(|i| i.events.clone());
+    let mut out: Vec<u8> = Vec::new();
+    let push = |s: &mut Session, button: u8, mods: egui::Modifiers, c: u16, r: u16, press: bool, out: &mut Vec<u8>| {
+        let mut b = button;
+        if mods.shift {
+            b += 4;
+        }
+        if mods.alt {
+            b += 8;
+        }
+        if mods.ctrl {
+            b += 16;
+        }
+        if sgr {
+            out.extend_from_slice(format!("\x1b[<{};{};{}{}", b, c + 1, r + 1, if press { 'M' } else { 'm' }).as_bytes());
+        } else if c + 1 <= 222 && r + 1 <= 222 {
+            out.extend_from_slice(&[0x1b, b'[', b'M', 32 + b, 32 + (c + 1) as u8, 32 + (r + 1) as u8]);
+        }
+        s.mouse_last = (c, r);
+    };
+    for ev in events {
+        match ev {
+            egui::Event::PointerButton { pos, button, pressed, modifiers } => {
+                let b = match button {
+                    egui::PointerButton::Primary => 0,
+                    egui::PointerButton::Middle => 1,
+                    egui::PointerButton::Secondary => 2,
+                    _ => continue,
+                };
+                if pressed {
+                    if !text_rect.contains(pos) {
+                        continue;
+                    }
+                    s.mouse_down = Some(b);
+                    let (c, r) = cell(pos);
+                    push(s, b, modifiers, c, r, true, &mut out);
+                } else if s.mouse_down.is_some() {
+                    s.mouse_down = None;
+                    if mode == MouseProtocolMode::Press {
+                        continue; // X10 reports presses only
+                    }
+                    let (c, r) = cell(pos);
+                    push(s, if sgr { b } else { 3 }, modifiers, c, r, false, &mut out);
+                }
+            }
+            egui::Event::PointerMoved(pos) => {
+                let tracking = mode == MouseProtocolMode::AnyMotion || (mode == MouseProtocolMode::ButtonMotion && s.mouse_down.is_some());
+                if !tracking || !text_rect.contains(pos) {
+                    continue;
+                }
+                let (c, r) = cell(pos);
+                if (c, r) == s.mouse_last {
+                    continue;
+                }
+                let mods = ui.input(|i| i.modifiers);
+                let b = s.mouse_down.unwrap_or(3) + 32;
+                push(s, b, mods, c, r, true, &mut out);
+            }
+            _ => {}
+        }
+    }
+    if !out.is_empty() {
+        s.send(&out);
+    }
 }
 
 fn key_bytes(key: egui::Key, m: egui::Modifiers, app_cursor: bool, backspace_bs: bool, enter: &str, delete_del: bool, home_end_tilde: bool) -> Option<Vec<u8>> {
@@ -1968,6 +2298,43 @@ mod home_end_tests {
         assert_eq!(key_bytes(Key::End, n, false, false, "CR", false, false).unwrap(), b"\x1b[F");
         // application cursor mode keeps ESC O H / ESC O F
         assert_eq!(key_bytes(Key::Home, n, true, false, "CR", false, true).unwrap(), b"\x1bOH");
+    }
+}
+
+#[cfg(test)]
+mod pubkey_tests {
+    use super::*;
+
+    fn session() -> Session {
+        let mut cfg = SessionConfig::default();
+        cfg.protocol = config::Protocol::Ssh;
+        cfg.identity_file = "C:\\Users\\x\\.ssh\\id_test".into();
+        Session::new_with_key(1, cfg, &egui::Context::default(), String::new())
+    }
+
+    #[test]
+    fn refused_key_is_reported_and_accepted_key_is_not() {
+        let mut s = session();
+        s.scan_debug("debug1: Offering public key: C:\\Users\\x\\.ssh\\id_test ED25519 SHA256:abc\ndebug1: Authentications that can continue: publickey,password\n");
+        assert!(s.pubkey_failed.as_deref().unwrap_or("").contains("id_test"));
+
+        let mut s = session();
+        s.scan_debug("debug1: Offering public key: C:\\Users\\x\\.ssh\\id_test ED25519 SHA256:abc\ndebug1: Server accepts key: C:\\Users\\x\\.ssh\\id_test\ndebug1: Authentications that can continue: publickey\n");
+        assert!(s.pubkey_failed.is_none());
+
+        // another key (agent) refused: not this session's identity file
+        let mut s = session();
+        s.scan_debug("debug1: Offering public key: /agent/other ED25519 SHA256:abc\ndebug1: Authentications that can continue: publickey\n");
+        assert!(s.pubkey_failed.is_none());
+    }
+
+    #[test]
+    fn debug_lines_stay_off_the_screen_even_when_split() {
+        let mut s = session();
+        let a = s.strip_debug_lines("hello\r\ndebug1: Connecting to host [1.2.3.4] po".into());
+        let b = s.strip_debug_lines("rt 22.\r\nuser@host's password: ".into());
+        assert_eq!(a, "hello\r\n");
+        assert_eq!(b, "user@host's password: ");
     }
 }
 

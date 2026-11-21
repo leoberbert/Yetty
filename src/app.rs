@@ -23,14 +23,26 @@ enum Layout {
     Cascade,
 }
 
+#[derive(Default)]
+struct UnlockDlg {
+    pass: String,
+    err: String,
+}
+
+#[derive(Default)]
+struct PassDlg {
+    old: String,
+    new: String,
+    confirm: String,
+    err: String,
+}
+
 #[derive(Clone, PartialEq)]
 enum Prompt {
     SendAscii,
     SendBinary,
     ReceiveAscii,
     LogFile,
-    RunScript,
-    EditScript,
     SaveScript,
     ExportSettings,
     ImportSettings,
@@ -47,11 +59,10 @@ enum Prompt {
     /// Tab menu > Save Session...: store the tab's session in the Session Manager under this name.
     SaveSession(u64),
     LockPassword,
-    OpenFile,
     XferSend(crate::transfer::Proto),
     XferRecv(crate::transfer::Proto),
     ConvertKey,
-    ExportPub,
+    NewButtonBar,
     TftpFolder,
     CredPassword(usize),
 }
@@ -117,8 +128,6 @@ enum TreeAct {
     Export,
     Properties,
     NewFolder,
-    DefaultConnect(usize),
-    DefaultProps(usize),
     Move(DragItem, String),
 }
 
@@ -341,11 +350,76 @@ fn mi_plain(ui: &mut egui::Ui, text: &str, enabled: bool) -> bool {
 fn mi_with_icon(ui: &mut egui::Ui, icon: &str, text: &str, sc: &str, enabled: bool) -> bool {
     use egui::AtomExt;
     let icon = RichText::new(icon).size(12.5).atom_size(egui::vec2(18.0, 14.0));
-    let mut b = egui::Button::new((icon, text));
+    let (job, mnemonic) = mnemonic_job(ui, text, enabled, true);
+    let mut b = match job {
+        Some(job) => egui::Button::new((icon, egui::WidgetText::from(job))),
+        None => egui::Button::new((icon, text)),
+    };
     if !sc.is_empty() {
         b = b.shortcut_text(sc);
     }
-    ui.add_enabled(enabled, b).clicked()
+    let mut hit = ui.add_enabled(enabled, b).clicked();
+    // typing the underlined letter while the menu is open chooses the item
+    if enabled && !hit {
+        if let Some(letter) = mnemonic {
+            if let Some(key) = egui::Key::from_name(&letter.to_ascii_uppercase().to_string()) {
+                let letter_s = letter.to_string();
+                let pressed = ui.input_mut(|i| {
+                    let p = i.consume_key(egui::Modifiers::NONE, key);
+                    if p {
+                        i.events.retain(|e| !matches!(e, egui::Event::Text(t) if t.eq_ignore_ascii_case(&letter_s)));
+                    }
+                    p
+                });
+                if pressed {
+                    ui.close();
+                    hit = true;
+                }
+            }
+        }
+    }
+    hit
+}
+
+/// The caption as a text with its mnemonic letter underlined (None when the caption has no mnemonic); the letter too.
+fn mnemonic_job(ui: &egui::Ui, text: &str, enabled: bool, show: bool) -> (Option<egui::text::LayoutJob>, Option<char>) {
+    let rest = text.trim_start_matches(['✓', ' ']);
+    let lead = &text[..text.len() - rest.len()];
+    let Some((idx, letter)) = crate::mnemonics::lookup(rest) else { return (None, None) };
+    if !show {
+        return (None, Some(letter));
+    }
+    let color = if enabled { ui.visuals().text_color() } else { ui.visuals().widgets.noninteractive.fg_stroke.color };
+    let font_id = egui::TextStyle::Button.resolve(ui.style());
+    let plain = egui::text::TextFormat { font_id: font_id.clone(), color: Color32::PLACEHOLDER, ..Default::default() };
+    let under = egui::text::TextFormat { font_id, color: Color32::PLACEHOLDER, underline: egui::Stroke::new(1.0, color), ..Default::default() };
+    let chars: Vec<char> = rest.chars().collect();
+    let mut job = egui::text::LayoutJob::default();
+    let before: String = lead.chars().chain(chars[..idx.min(chars.len())].iter().copied()).collect();
+    job.append(&before, 0.0, plain.clone());
+    if let Some(c) = chars.get(idx) {
+        job.append(&c.to_string(), 0.0, under);
+        let after: String = chars[idx + 1..].iter().collect();
+        job.append(&after, 0.0, plain);
+    }
+    (Some(job), Some(letter))
+}
+
+/// A menu bar title with its mnemonic letter underlined while `show`.
+fn bar_title(ctx: &egui::Context, text: &str, show: bool) -> egui::WidgetText {
+    let Some((idx, _)) = crate::mnemonics::lookup(text) else { return text.into() };
+    if !show {
+        return text.into();
+    }
+    let font_id = egui::TextStyle::Button.resolve(&ctx.global_style());
+    let plain = egui::text::TextFormat { font_id: font_id.clone(), color: Color32::PLACEHOLDER, ..Default::default() };
+    let under = egui::text::TextFormat { font_id, color: Color32::PLACEHOLDER, underline: egui::Stroke::new(1.0, ctx.global_style().visuals.text_color()), ..Default::default() };
+    let chars: Vec<char> = text.chars().collect();
+    let mut job = egui::text::LayoutJob::default();
+    job.append(&chars[..idx].iter().collect::<String>(), 0.0, plain.clone());
+    job.append(&chars[idx].to_string(), 0.0, under);
+    job.append(&chars[idx + 1..].iter().collect::<String>(), 0.0, plain);
+    job.into()
 }
 
 /// A submenu inside a menu, with the same empty icon column as the items so its text lines up with theirs.
@@ -407,7 +481,7 @@ fn cmd_icon_color(name: &str) -> Color32 {
 fn cmd_tree_node(ui: &mut egui::Ui, st: &Settings, path: &str, filter: &str, sel: &mut Option<usize>, sel_folder: &mut Option<String>, act: &mut Option<CmdAct>, force: Option<bool>, can_paste: bool, target: u8, closed_change: &mut Vec<(String, bool)>) {
     let parent_of = |f: &str| f.rsplit_once('/').map(|x| x.0.to_string()).unwrap_or_default();
     let mut folders: Vec<String> = Vec::new();
-    let mut add_with_parents = |f: &str, list: &mut Vec<String>| {
+    let add_with_parents = |f: &str, list: &mut Vec<String>| {
         let mut cur = String::new();
         for part in f.split('/').filter(|s| !s.is_empty()) {
             if !cur.is_empty() {
@@ -826,6 +900,13 @@ pub struct YettyApp {
     rec_wait: bool,
     tftp: Option<crate::tftp::TftpServer>,
     tftp_open: bool,
+    zm_open: bool,
+    zm_list: Vec<String>,
+    unlock: Option<UnlockDlg>,
+    /// Sessions the start-up asked for, opened once the configuration passphrase is typed.
+    deferred: Vec<SessionConfig>,
+    deferred_connect: Option<String>,
+    pass_dlg: Option<PassDlg>,
     transparent: bool,
     cred_tmp: String,
     cred_tmp_for: Option<usize>,
@@ -855,10 +936,6 @@ enum ConfirmAct {
 impl YettyApp {
     fn ask(&mut self, text: impl Into<String>, act: ConfirmAct) {
         self.confirm = Some((text.into(), act));
-    }
-
-    fn session_name(&self, id: u64) -> String {
-        self.sessions.iter().find(|s| s.id == id).map(|s| s.title.clone()).unwrap_or_default()
     }
 
     fn index_of(&self, id: u64) -> Option<usize> {
@@ -1039,6 +1116,7 @@ impl YettyApp {
         if !settings.global.save_tree_state {
             settings.tree_open.clear();
         }
+        config::set_scheme_overrides_ansi(settings.global.scheme_overrides_ansi);
         install_fallback_fonts(&cc.egui_ctx);
         if settings.ansi_palette.len() == 16 {
             let mut p = [[0u8; 3]; 16];
@@ -1126,6 +1204,12 @@ impl YettyApp {
             rec_wait: false,
             tftp: None,
             tftp_open: false,
+            zm_open: false,
+            zm_list: Vec::new(),
+            unlock: None,
+            deferred: Vec::new(),
+            deferred_connect: None,
+            pass_dlg: None,
             transparent: false,
             cred_tmp: String::new(),
             cred_tmp_for: None,
@@ -1205,7 +1289,7 @@ impl YettyApp {
                         s.prompt_req = Some(if scene == "hostkey" {
                             term::SshPrompt::HostKey { detail: "The authenticity of host '127.0.0.1 (127.0.0.1)' can't be established.\nED25519 key fingerprint is SHA256:abcdEFGH1234.\nThis key is not known by any other names.\nAre you sure you want to continue connecting (yes/no/[fingerprint])?".into() }
                         } else {
-                            term::SshPrompt::Password { label: "qa@127.0.0.1's password:".into() }
+                            term::SshPrompt::Password
                         });
                     }
                 } else if scene == "tile" {
@@ -1256,6 +1340,10 @@ impl YettyApp {
                 }
             }
         }
+        let locked = !app.settings.config_passphrase_check.is_empty();
+        if locked {
+            app.unlock = Some(UnlockDlg::default());
+        }
         if app.screenshot.is_none() && connect.is_none() {
             // Global Options > General > "Show Session Manager or Connect dialog on startup"
             if app.settings.global.show_sm_on_startup {
@@ -1269,25 +1357,150 @@ impl YettyApp {
                 _ => Vec::new(),
             };
             for cfg in start {
-                app.open_session(cfg, &cc.egui_ctx);
+                if locked {
+                    app.deferred.push(cfg);
+                } else {
+                    app.open_session(cfg, &cc.egui_ctx);
+                }
             }
             app.dirty = false;
         }
         if let Some(c) = connect {
-            if let Some(name) = c.strip_prefix("session:") {
-                if let Some(cfg) = app.settings.sessions.iter().find(|s| s.display_name() == name).cloned() {
-                    app.open_session(cfg, &cc.egui_ctx);
-                }
+            if locked {
+                app.deferred_connect = Some(c);
             } else {
-                app.connect_bar = c;
-                app.connect_from_bar(&cc.egui_ctx);
+                app.run_connect(c, &cc.egui_ctx);
+                app.dirty = false;
             }
-            app.dirty = false;
         }
         app
     }
 
     // ----- sessions ------------------------------------------------------------
+
+    fn run_connect(&mut self, c: String, ctx: &egui::Context) {
+        if let Some(name) = c.strip_prefix("session:") {
+            if let Some(cfg) = self.settings.sessions.iter().find(|s| s.display_name() == name).cloned() {
+                self.open_session(cfg, ctx);
+            }
+        } else {
+            self.connect_bar = c;
+            self.connect_from_bar(ctx);
+        }
+    }
+
+    /// The start-up window asking for the configuration passphrase; true while it is still open.
+    fn unlock_ui(&mut self, ctx: &egui::Context) -> bool {
+        let Some(mut d) = self.unlock.take() else { return false };
+        let (mut ok, mut cancel, mut open) = (false, false, true);
+        dialogs::dialog(ctx, "unlock_cfg", "Enter Configuration Passphrase", 380.0, &mut open, false, |ui| {
+            ui.add_space(4.0);
+            ui.label("Enter the passphrase that protects the saved passwords:");
+            ui.add_space(4.0);
+            let r = ui.add(egui::TextEdit::singleline(&mut d.pass).password(true).desired_width(f32::INFINITY));
+            if !r.has_focus() && !r.lost_focus() {
+                r.request_focus();
+            }
+            if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                ok = true;
+            }
+            if !d.err.is_empty() {
+                ui.colored_label(Color32::from_rgb(0xe0, 0x60, 0x60), &d.err);
+            }
+            ui.add_space(6.0);
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.add(egui::Button::new("Cancel").min_size(egui::vec2(72.0, 22.0))).clicked() {
+                    cancel = true;
+                }
+                if ui.add(egui::Button::new("OK").min_size(egui::vec2(72.0, 22.0)).stroke(egui::Stroke::new(1.0, Color32::from_rgb(0x00, 0x78, 0xd4)))).clicked() {
+                    ok = true;
+                }
+            });
+        });
+        if cancel || !open {
+            self.exit_ok = true;
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            self.unlock = Some(d);
+            return true;
+        }
+        if ok {
+            if config::passphrase_matches(&self.settings.config_passphrase_check, &d.pass) {
+                config::set_config_passphrase(Some(&d.pass));
+                for cfg in std::mem::take(&mut self.deferred) {
+                    self.open_session(cfg, ctx);
+                }
+                if let Some(c) = self.deferred_connect.take() {
+                    self.run_connect(c, ctx);
+                }
+                self.dirty = false;
+                return false;
+            }
+            d.err = "The passphrase is not correct.".into();
+            d.pass.clear();
+        }
+        self.unlock = Some(d);
+        true
+    }
+
+    /// Tools > Change Configuration Passphrase: the saved passwords are encrypted again with the new passphrase.
+    fn pass_dialog(&mut self, ctx: &egui::Context) {
+        let Some(mut d) = self.pass_dlg.take() else { return };
+        let has_cur = !self.settings.config_passphrase_check.is_empty();
+        let (mut ok, mut cancel, mut open) = (false, false, true);
+        dialogs::dialog(ctx, "change_cfg_pass", "Change Configuration Passphrase", 400.0, &mut open, true, |ui| {
+            ui.add_space(4.0);
+            ui.label("The passphrase protects the saved passwords and key passphrases in the settings. It is asked for each time Yetty starts.");
+            ui.add_space(4.0);
+            egui::Grid::new("pass_grid").num_columns(2).spacing([10.0, 6.0]).show(ui, |ui| {
+                if has_cur {
+                    ui.label("Current passphrase:");
+                    ui.add(egui::TextEdit::singleline(&mut d.old).password(true).desired_width(200.0));
+                    ui.end_row();
+                }
+                ui.label("New passphrase:");
+                ui.add(egui::TextEdit::singleline(&mut d.new).password(true).desired_width(200.0));
+                ui.end_row();
+                ui.label("Confirm passphrase:");
+                ui.add(egui::TextEdit::singleline(&mut d.confirm).password(true).desired_width(200.0));
+                ui.end_row();
+            });
+            ui.weak("Leave the new passphrase empty to remove the passphrase.");
+            if !d.err.is_empty() {
+                ui.colored_label(Color32::from_rgb(0xe0, 0x60, 0x60), &d.err);
+            }
+            ui.add_space(6.0);
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.add(egui::Button::new("Cancel").min_size(egui::vec2(72.0, 22.0))).clicked() {
+                    cancel = true;
+                }
+                if ui.add(egui::Button::new("OK").min_size(egui::vec2(72.0, 22.0)).stroke(egui::Stroke::new(1.0, Color32::from_rgb(0x00, 0x78, 0xd4)))).clicked() {
+                    ok = true;
+                }
+            });
+        });
+        if cancel || !open {
+            return;
+        }
+        if ok {
+            if has_cur && !config::passphrase_matches(&self.settings.config_passphrase_check, &d.old) {
+                d.err = "The current passphrase is not correct.".into();
+            } else if d.new != d.confirm {
+                d.err = "The two passphrases are not the same.".into();
+            } else {
+                let old = has_cur.then(|| d.old.clone());
+                let new = if d.new.is_empty() { None } else { Some(d.new.clone()) };
+                self.settings.rekey(old.as_deref(), new.as_deref());
+                for s in &mut self.sessions {
+                    s.cfg.rekey_secrets(old.as_deref(), new.as_deref());
+                }
+                config::set_config_passphrase(new.as_deref());
+                self.settings.save();
+                self.status_msg = if new.is_some() { "Configuration passphrase changed".into() } else { "Configuration passphrase removed".into() };
+                return;
+            }
+        }
+        self.pass_dlg = Some(d);
+    }
 
     fn open_session(&mut self, cfg: SessionConfig, ctx: &egui::Context) {
         let mut cfg = cfg;
@@ -1301,6 +1514,10 @@ impl YettyApp {
                 Err(e) => format!("Could not start Remote Desktop: {e}"),
             };
             return;
+        }
+        // Window > Initial position: the Yetty window moves there when the first session opens
+        if cfg.initial_pos_on && self.sessions.is_empty() {
+            ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(cfg.initial_x as f32, cfg.initial_y as f32)));
         }
         if cfg.protocol.uses_host() && cfg.port == 0 {
             cfg.port = cfg.protocol.default_port();
@@ -1917,6 +2134,23 @@ impl YettyApp {
         }
     }
 
+    fn start_zmodem_upload(&mut self) {
+        let files: Vec<std::path::PathBuf> = self.zm_list.iter().map(std::path::PathBuf::from).collect();
+        match crate::transfer::Transfer::new_zmodem_send(files) {
+            Ok(t) => {
+                if let Some(s) = self.sessions.get_mut(self.active) {
+                    let cmd = s.cfg.zmodem_upload_cmd.trim().to_string();
+                    if !cmd.is_empty() {
+                        s.send(format!("{cmd}\r").as_bytes());
+                    }
+                    s.xfer = Some(t);
+                    self.zm_list.clear();
+                }
+            }
+            Err(e) => self.status_msg = e,
+        }
+    }
+
     fn download_dir(&self) -> std::path::PathBuf {
         let d = self.sessions.get(self.active).map(|s| s.cfg.download_dir.clone()).unwrap_or_default();
         if d.trim().is_empty() {
@@ -2091,15 +2325,25 @@ impl YettyApp {
         let recording = cur.map(|s| s.recording.is_some()).unwrap_or(false);
         let tracing = cur.map(|s| s.cfg.ssh_verbose).unwrap_or(self.pending_trace);
         let any_down = self.sessions.iter().any(|s| !s.is_connected());
+        let hs_on = cur.map(|s| s.cfg.show_hscrollbar).unwrap_or(false);
         let has_sel = cur.map(|s| s.selection.is_some()).unwrap_or(false);
         let tftp_on = self.tftp.is_some();
         let locked = cur.map(|s| s.locked.is_some()).unwrap_or(false);
         let x1k = cur.map(|s| s.cfg.xmodem_1k).unwrap_or(false);
         let vs_on = cur.map(|s| s.cfg.show_scrollbar).unwrap_or(true);
         let mut menus: Vec<egui::Response> = Vec::new();
+        // Alt+letter opens a menu (the original's mnemonics) unless Alt is Meta for the session.
+        let alt_open: Option<usize> = if cur.map(|s| s.cfg.meta_key).unwrap_or(false) {
+            None
+        } else {
+            const BAR_KEYS: [egui::Key; 9] = [egui::Key::F, egui::Key::E, egui::Key::V, egui::Key::O, egui::Key::T, egui::Key::S, egui::Key::L, egui::Key::W, egui::Key::H];
+            ctx.input_mut(|i| BAR_KEYS.iter().position(|k| i.consume_key(egui::Modifiers::ALT, *k)))
+        };
+        // the underlined letters show while Alt is down or a menu is open
+        let bar_ul = alt_open.is_some() || ctx.input(|i| i.modifiers.alt) || egui::Popup::is_any_open(&ctx);
         egui::MenuBar::new().ui(ui, |ui| {
             ui.spacing_mut().button_padding = egui::vec2(6.0, 1.0);
-            menus.push(ui.menu_button("File", |ui| {
+            menus.push(ui.menu_button(bar_title(&ctx, "File", bar_ul), |ui| {
                 ui.set_min_width(260.0);
                 if mi(ui, "Connect...", "Alt+C", true) {
                     self.quick_connect();
@@ -2295,7 +2539,7 @@ impl YettyApp {
                     self.request_exit(&ctx);
                 }
             }).response);
-            menus.push(ui.menu_button("Edit", |ui| {
+            menus.push(ui.menu_button(bar_title(&ctx, "Edit", bar_ul), |ui| {
                 ui.set_min_width(300.0);
                 if mi(ui, "Copy", "Ctrl+Ins", true) {
                     self.copy_selection(&ctx);
@@ -2373,7 +2617,7 @@ impl YettyApp {
                     }
                 }
             }).response);
-            menus.push(ui.menu_button("View", |ui| {
+            menus.push(ui.menu_button(bar_title(&ctx, "View", bar_ul), |ui| {
                 ui.set_min_width(250.0);
                 let st = &mut self.settings;
                 ui.checkbox(&mut st.show_menu_bar, "Menu Bar");
@@ -2417,7 +2661,12 @@ impl YettyApp {
                     config::set_window_opacity(if tr { 200 } else { 255 });
                 }
                 ui.separator();
-                ui.add_enabled(false, egui::Checkbox::new(&mut false, "Horizontal Scroll Bar"));
+                let mut hs = hs_on;
+                if ui.add_enabled(has, egui::Checkbox::new(&mut hs, "Horizontal Scroll Bar")).clicked() {
+                    if let Some(s) = self.sessions.get_mut(self.active) {
+                        s.cfg.show_hscrollbar = hs;
+                    }
+                }
                 let mut vs = vs_on;
                 if ui.add_enabled(has, egui::Checkbox::new(&mut vs, "Vertical Scroll Bar")).clicked() {
                     if let Some(s) = self.sessions.get_mut(self.active) {
@@ -2435,7 +2684,7 @@ impl YettyApp {
                     ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(!full));
                 }
             }).response);
-            menus.push(ui.menu_button("Options", |ui| {
+            menus.push(ui.menu_button(bar_title(&ctx, "Options", bar_ul), |ui| {
                 ui.set_min_width(260.0);
                 if mi(ui, "Session Options...", "", has) {
                     self.open_options(EditTarget::Active, "connection");
@@ -2472,7 +2721,7 @@ impl YettyApp {
                     self.status_msg = "Settings saved".into();
                 }
             }).response);
-            menus.push(ui.menu_button("Transfer", |ui| {
+            menus.push(ui.menu_button(bar_title(&ctx, "Transfer", bar_ul), |ui| {
                 ui.set_min_width(240.0);
                 if mi(ui, "Send ASCII...", "", has) {
                     self.prompt(Prompt::SendAscii, "Send ASCII", "Text file to send:", String::new());
@@ -2493,8 +2742,13 @@ impl YettyApp {
                     self.prompt(Prompt::SendBinary, "Send Binary", "File to send:", String::new());
                 }
                 ui.separator();
-                mi(ui, "Send Kermit...", "", false);
-                mi(ui, "Receive Kermit...", "", false);
+                if mi(ui, "Send Kermit...", "", has) {
+                    self.prompt(Prompt::XferSend(Proto::Kermit), "Send Kermit", "File to send:", String::new());
+                }
+                if mi(ui, "Receive Kermit...", "", has) {
+                    let p = self.download_dir().to_string_lossy().into_owned();
+                    self.prompt(Prompt::XferRecv(Proto::Kermit), "Receive Kermit", "Save received files in this folder:", p);
+                }
                 ui.separator();
                 if mi(ui, "Send Xmodem...", "", has) {
                     self.prompt(Prompt::XferSend(if x1k { Proto::Xmodem1k } else { Proto::Xmodem }), "Send Xmodem", "File to send:", String::new());
@@ -2512,8 +2766,12 @@ impl YettyApp {
                     self.prompt(Prompt::XferRecv(Proto::Ymodem), "Receive Ymodem", "Save received files in this folder:", p);
                 }
                 ui.separator();
-                mi(ui, "Zmodem Upload List...", "", false);
-                mi(ui, "Start Zmodem Upload", "", false);
+                if mi(ui, "Zmodem Upload List...", "", true) {
+                    self.zm_open = true;
+                }
+                if mi(ui, "Start Zmodem Upload", "", has && !self.zm_list.is_empty()) {
+                    self.start_zmodem_upload();
+                }
                 ui.separator();
                 // The TFTP server does not need a session: it can be started at any time.
                 if mi(ui, if tftp_on { "Stop TFTP Server" } else { "Start TFTP Server" }, "", true) {
@@ -2529,7 +2787,7 @@ impl YettyApp {
                     self.tftp_open = true;
                 }
             }).response);
-            menus.push(ui.menu_button("Script", |ui| {
+            menus.push(ui.menu_button(bar_title(&ctx, "Script", bar_ul), |ui| {
                 ui.set_min_width(240.0);
                 if mi(ui, "Run...", "", true) {
                     // The original opens the Windows file dialog straight away.
@@ -2589,7 +2847,7 @@ impl YettyApp {
                     });
                 }
             }).response);
-            menus.push(ui.menu_button("Tools", |ui| {
+            menus.push(ui.menu_button(bar_title(&ctx, "Tools", bar_ul), |ui| {
                 ui.set_min_width(320.0);
                 if mi(ui, "Keymap Editor...", "", true) {
                     self.keymap_open = true;
@@ -2599,6 +2857,22 @@ impl YettyApp {
                 }
                 if mi(ui, "Convert Private Key to OpenSSH Format...", "", true) {
                     self.prompt(Prompt::ConvertKey, "Convert Private Key", "Private key file:", crate::config::ssh_dir());
+                }
+                if mi(ui, "Export Public Key from Certificate...", "", true) {
+                    ui.close();
+                    if let Some(p) = config::browse_file("Select the certificate (PEM, DER, PFX or P12)", None) {
+                        match crate::certkey::public_key_from_certificate(&p) {
+                            Ok(line) => {
+                                if let Some(dest) = config::browse_save("Export Public Key") {
+                                    self.status_msg = match std::fs::write(&dest, format!("{line}\n")) {
+                                        Ok(()) => format!("Public key exported to {dest}"),
+                                        Err(e) => format!("Could not write {dest}: {e}"),
+                                    };
+                                }
+                            }
+                            Err(e) => self.error_msg = Some(e),
+                        }
+                    }
                 }
                 if mi(ui, "Public-Key Assistant...", "", has) {
                     self.keyassist_open = true;
@@ -2623,7 +2897,9 @@ impl YettyApp {
                     });
                 }
                 ui.separator();
-                mi(ui, "Change Configuration Passphrase...", "", false);
+                if mi(ui, "Change Configuration Passphrase...", "", true) {
+                    self.pass_dlg = Some(PassDlg::default());
+                }
                 ui.separator();
                 if mi(ui, "Export Settings...", "", true) {
                     let p = config::data_dir().join("settings-export.json").to_string_lossy().into_owned();
@@ -2636,7 +2912,7 @@ impl YettyApp {
                     self.prompt(Prompt::ImportSettings, "Import Settings", "Settings file:", String::new());
                 }
             }).response);
-            menus.push(ui.menu_button("Window", |ui| {
+            menus.push(ui.menu_button(bar_title(&ctx, "Window", bar_ul), |ui| {
                 ui.set_min_width(210.0);
                 if ui.radio(self.layout == Layout::Tabs, "Tabs").clicked() {
                     self.layout = Layout::Tabs;
@@ -2667,17 +2943,28 @@ impl YettyApp {
                     }
                 }
             }).response);
-            menus.push(ui.menu_button("Help", |ui| {
+            menus.push(ui.menu_button(bar_title(&ctx, "Help", bar_ul), |ui| {
                 ui.set_min_width(200.0);
-                if ui.button("Help Topics").clicked() {
+                if mi_plain(ui, "Help Topics", true) {
                     self.help_open = true;
                 }
                 ui.separator();
-                if ui.button("About Yetty...").clicked() {
+                if mi_plain(ui, "About Yetty...", true) {
                     self.about_open = true;
                 }
             }).response);
         });
+        if let Some(i) = alt_open {
+            for (j, r) in menus.iter().enumerate() {
+                let id = egui::Popup::default_response_id(r);
+                if j == i {
+                    egui::Popup::open_id(&ctx, id);
+                } else {
+                    egui::Popup::close_id(&ctx, id);
+                }
+            }
+            ctx.request_repaint();
+        }
         // Like the original: while a menu is open, moving the pointer over another menu opens that one.
         let any_open = menus.iter().any(|r| egui::Popup::is_id_open(&ctx, egui::Popup::default_response_id(r)));
         if any_open {
@@ -3074,15 +3361,6 @@ impl YettyApp {
                     }
                 }
             },
-            TreeAct::DefaultConnect(n) => {
-                let p = if n == 0 { Protocol::LocalShell } else { Protocol::Serial };
-                let mut cfg = self.settings.defaults_for(p);
-                cfg.name = if n == 0 { "Default_LocalShell".into() } else { "Default_Serial".into() };
-                self.open_session(cfg, ctx);
-            }
-            TreeAct::DefaultProps(n) => {
-                self.open_options(if n == 0 { EditTarget::DefaultLocal } else { EditTarget::DefaultSerial }, "connection");
-            }
             TreeAct::Properties => {
                 if let Some(n) = self.sel_default.filter(|_| self.selected.is_none()) {
                     self.open_options(if n == 0 { EditTarget::DefaultLocal } else { EditTarget::DefaultSerial }, "connection");
@@ -3597,13 +3875,26 @@ impl YettyApp {
         }
     }
 
+    /// The buttons of the bar the active session shows (its "Button bar" option; the default bar otherwise).
+    fn bar_mut(&mut self) -> &mut Vec<ButtonDef> {
+        let name = self.sessions.get(self.active).map(|s| s.cfg.button_bar.clone()).unwrap_or_default();
+        match self.settings.button_bars.iter().position(|b| b.0 == name) {
+            Some(i) if !name.is_empty() => &mut self.settings.button_bars[i].1,
+            _ => &mut self.settings.buttons,
+        }
+    }
+
     fn button_bar(&mut self, ui: &mut egui::Ui) {
         let mut edit = None;
         let mut remove = None;
         let mut send = None;
         let mut add = false;
+        let mut new_bar = false;
+        let mut del_bar = false;
+        let bar_name = self.sessions.get(self.active).map(|s| s.cfg.button_bar.clone()).unwrap_or_default();
+        let buttons = self.bar_mut().clone();
         ui.horizontal_wrapped(|ui| {
-            for (i, b) in self.settings.buttons.iter().enumerate() {
+            for (i, b) in buttons.iter().enumerate() {
                 let r = ui.button(&b.label).on_hover_text(format!("Sends: {}", b.text));
                 if r.clicked() {
                     send = Some(config::unescape(&b.text));
@@ -3617,10 +3908,33 @@ impl YettyApp {
                     }
                 });
             }
-            if ui.button("➕").on_hover_text("New button").clicked() {
+            let plus = ui.button("➕").on_hover_text("New button");
+            if plus.clicked() {
                 add = true;
             }
+            plus.context_menu(|ui| {
+                if ui.button("New Button Bar...").clicked() {
+                    new_bar = true;
+                    ui.close();
+                }
+                if ui.add_enabled(!bar_name.is_empty(), egui::Button::new("Delete This Button Bar")).clicked() {
+                    del_bar = true;
+                    ui.close();
+                }
+            });
         });
+        if new_bar {
+            self.prompt(Prompt::NewButtonBar, "New Button Bar", "Name of the button bar:", String::new());
+        }
+        if del_bar {
+            self.settings.button_bars.retain(|b| b.0 != bar_name);
+            for s in &mut self.sessions {
+                if s.cfg.button_bar == bar_name {
+                    s.cfg.button_bar.clear();
+                }
+            }
+            self.dirty = true;
+        }
         if add {
             self.button_editor = Some(ButtonEditor { index: None, def: ButtonDef { label: "New".into(), text: "\\r".into() } });
         }
@@ -3629,10 +3943,10 @@ impl YettyApp {
             self.focus_terminal = true;
         }
         if let Some(i) = edit {
-            self.button_editor = Some(ButtonEditor { index: Some(i), def: self.settings.buttons[i].clone() });
+            self.button_editor = Some(ButtonEditor { index: Some(i), def: buttons[i].clone() });
         }
         if let Some(i) = remove {
-            self.settings.buttons.remove(i);
+            self.bar_mut().remove(i);
             self.dirty = true;
         }
     }
@@ -3693,9 +4007,17 @@ impl YettyApp {
         };
         let empty = self.command_line.is_empty();
         let immediate = self.settings.cmd_send_immediately;
+        // the box keeps its own undo history; the menu entry follows it
+        let undo_now = |text: &str| {
+            let cur = egui::TextEdit::load_state(&ctx, id).and_then(|s| s.cursor.char_range()).unwrap_or_default();
+            (cur, text.to_string())
+        };
+        let can_undo = egui::TextEdit::load_state(&ctx, id).map(|s| s.undoer().has_undo(&undo_now(&self.command_line))).unwrap_or(false);
         r.context_menu(|ui| {
             ui.set_min_width(330.0);
-            mi(ui, "Undo", "Ctrl+Z", false);
+            if mi(ui, "Undo", "Ctrl+Z", can_undo) {
+                menu_act = Some("undo");
+            }
             ui.separator();
             if mi(ui, "Cut", "Ctrl+X", has_sel) {
                 menu_act = Some("cut");
@@ -3760,6 +4082,18 @@ impl YettyApp {
                     if menu_act != Some("copy") {
                         let rest: String = chars[..a.min(chars.len())].iter().chain(chars[b.min(chars.len())..].iter()).collect();
                         self.command_line = rest;
+                    }
+                }
+            }
+            Some("undo") => {
+                if let Some(mut st) = egui::TextEdit::load_state(&ctx, id) {
+                    let mut u = st.undoer();
+                    if let Some((range, text)) = u.undo(&undo_now(&self.command_line)).cloned() {
+                        self.command_line = text;
+                        st.cursor.set_char_range(Some(range));
+                        st.set_undoer(u);
+                        st.store(&ctx, id);
+                        ctx.memory_mut(|m| m.request_focus(id));
                     }
                 }
             }
@@ -4508,8 +4842,8 @@ impl YettyApp {
             if save {
                 let be = self.button_editor.take().unwrap();
                 match be.index {
-                    Some(i) if i < self.settings.buttons.len() => self.settings.buttons[i] = be.def,
-                    _ => self.settings.buttons.push(be.def),
+                    Some(i) if i < self.bar_mut().len() => self.bar_mut()[i] = be.def,
+                    _ => self.bar_mut().push(be.def),
                 }
                 self.dirty = true;
             } else if !open {
@@ -4551,6 +4885,51 @@ impl YettyApp {
             }
         }
 
+        self.pass_dialog(ctx);
+        if self.zm_open {
+            let mut open = true;
+            let mut add = false;
+            let mut clear = false;
+            let mut remove: Option<usize> = None;
+            dialogs::dialog(ctx, "zm_list", "Zmodem Upload List", 440.0, &mut open, true, |ui| {
+                ui.label("Files sent by Start Zmodem Upload (after the upload command of the session has run on the host):");
+                egui::ScrollArea::vertical().max_height(180.0).auto_shrink([false, true]).show(ui, |ui| {
+                    if self.zm_list.is_empty() {
+                        ui.weak("(no files)");
+                    }
+                    for (i, p) in self.zm_list.iter().enumerate() {
+                        ui.horizontal(|ui| {
+                            if ui.small_button("✖").on_hover_text("Remove").clicked() {
+                                remove = Some(i);
+                            }
+                            ui.label(p);
+                        });
+                    }
+                });
+                ui.horizontal(|ui| {
+                    if ui.button("Add...").clicked() {
+                        add = true;
+                    }
+                    if ui.add_enabled(!self.zm_list.is_empty(), egui::Button::new("Clear")).clicked() {
+                        clear = true;
+                    }
+                });
+            });
+            if add {
+                if let Some(p) = config::browse_file("Add a file to the Zmodem upload list", None) {
+                    self.zm_list.push(p);
+                }
+            }
+            if let Some(i) = remove {
+                self.zm_list.remove(i);
+            }
+            if clear {
+                self.zm_list.clear();
+            }
+            if !open {
+                self.zm_open = false;
+            }
+        }
         if self.trace_open {
             let mut open = true;
             dialogs::dialog(ctx, "trace_win", "Trace Options", 340.0, &mut open, true, |ui| {
@@ -4624,6 +5003,30 @@ impl YettyApp {
             }
         }
 
+        // "Public Key Authentication Failed": the server refused the identity file chosen for the session.
+        if let Some(idx) = self.sessions.iter().position(|s| s.pubkey_failed.is_some()) {
+            let key = self.sessions[idx].pubkey_failed.clone().unwrap_or_default();
+            let (user, host) = (self.sessions[idx].cfg.username.clone(), self.sessions[idx].cfg.host.clone());
+            let mut open = true;
+            let mut ok = false;
+            dialogs::dialog(ctx, "pubkey_failed", "Public Key Authentication Failed", 440.0, &mut open, true, |ui| {
+                ui.add_space(4.0);
+                ui.label(format!("The server {host} did not accept the public key for {}.", if user.is_empty() { "this user" } else { &user }));
+                ui.add_space(4.0);
+                ui.label(RichText::new(&key).monospace().size(11.5));
+                ui.add_space(4.0);
+                ui.label("Make sure the matching public key is in the server's authorized_keys file, then try again. The connection continues with the next authentication method.");
+                ui.add_space(6.0);
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.add(egui::Button::new("OK").min_size(egui::vec2(72.0, 22.0)).stroke(egui::Stroke::new(1.0, Color32::from_rgb(0x00, 0x78, 0xd4)))).clicked() {
+                        ok = true;
+                    }
+                });
+            });
+            if ok || !open {
+                self.sessions[idx].pubkey_failed = None;
+            }
+        }
         dialogs::message_window(ctx, "app_error", &mut self.error_msg);
         // The ssh program's questions as windows: "New Host Key" and "Enter Secure Shell Password".
         if let Some(idx) = self.sessions.iter().position(|s| s.prompt_req.is_some()) {
@@ -4678,7 +5081,7 @@ impl YettyApp {
                         self.sessions[idx].answer_prompt(None);
                     }
                 }
-                Some(term::SshPrompt::Password { label: _ }) => {
+                Some(term::SshPrompt::Password) => {
                     let pw_id = egui::Id::new(("pw_dlg", sid));
                     let (mut pw, mut save): (String, bool) = ctx.data_mut(|d| d.get_temp(pw_id).unwrap_or_default());
                     let mut open = true;
@@ -4745,7 +5148,7 @@ impl YettyApp {
                             ui.set_width(170.0);
                             ui.label("Function");
                             egui::ComboBox::from_id_salt("cmd_func").width(165.0).selected_text("Send String").show_ui(ui, |ui| {
-                                ui.selectable_label(true, "Send String");
+                                let _ = ui.selectable_label(true, "Send String");
                             });
                             ui.checkbox(&mut def.disable_tooltip, "Disable tooltip");
                         });
@@ -4963,7 +5366,7 @@ impl YettyApp {
             }
             // 0 = nothing to browse, 1 = open a file, 2 = save a file, 3 = choose a folder
             let browse = match p.kind {
-                Prompt::SendAscii | Prompt::SendBinary | Prompt::RunScript | Prompt::EditScript | Prompt::OpenFile | Prompt::ImportSettings | Prompt::ConvertKey | Prompt::ExportPub | Prompt::XferSend(_) => 1,
+                Prompt::SendAscii | Prompt::SendBinary | Prompt::ImportSettings | Prompt::ConvertKey | Prompt::XferSend(_) => 1,
                 Prompt::ReceiveAscii | Prompt::LogFile | Prompt::SaveScript | Prompt::ExportSettings | Prompt::ExportSessions | Prompt::XferRecv(_) => 2,
                 Prompt::TftpFolder => 3,
                 _ => 0,
@@ -5037,19 +5440,6 @@ impl YettyApp {
                     };
                 }
             }
-            Prompt::RunScript => {
-                if let Some(s) = self.sessions.get(self.active) {
-                    let id = s.id;
-                    self.start_script(id, &text);
-                }
-            }
-            Prompt::EditScript => {
-                let _ = std::process::Command::new("notepad.exe").arg(&text).spawn();
-            }
-            Prompt::OpenFile => match std::fs::read_to_string(&text) {
-                Ok(t) => self.scratch = Some(t),
-                Err(e) => self.status_msg = format!("Could not read the file: {e}"),
-            },
             Prompt::SaveScript => {
                 if let Some(s) = self.sessions.iter_mut().find(|s| Some(s.id) == self.rec_target) {
                     if let Some(lines) = s.recording.take() {
@@ -5244,22 +5634,45 @@ impl YettyApp {
                     self.dirty = true;
                 }
             }
-            Prompt::XferSend(proto) => match crate::transfer::Transfer::new_send(proto, std::path::Path::new(&text)) {
-                Ok(t) => {
-                    if let Some(s) = self.sessions.get_mut(self.active) {
-                        s.xfer = Some(t);
+            Prompt::XferSend(proto) => {
+                let path = std::path::Path::new(&text);
+                let made = if proto == crate::transfer::Proto::Kermit {
+                    crate::transfer::Transfer::new_kermit_send(path)
+                } else {
+                    crate::transfer::Transfer::new_send(proto, path)
+                };
+                match made {
+                    Ok(t) => {
+                        if let Some(s) = self.sessions.get_mut(self.active) {
+                            s.xfer = Some(t);
+                        }
                     }
+                    Err(e) => self.status_msg = e,
                 }
-                Err(e) => self.status_msg = e,
-            },
+            }
             Prompt::XferRecv(proto) => {
-                let t = crate::transfer::Transfer::new_receive(proto, std::path::PathBuf::from(&text));
+                let t = if proto == crate::transfer::Proto::Kermit {
+                    crate::transfer::Transfer::new_kermit_receive(std::path::PathBuf::from(&text))
+                } else {
+                    crate::transfer::Transfer::new_receive(proto, std::path::PathBuf::from(&text))
+                };
                 if let Some(s) = self.sessions.get_mut(self.active) {
                     s.xfer = Some(t);
                 }
             }
             Prompt::ConvertKey => config::open_console(&format!("ssh-keygen -p -o -f \"{text}\"")),
-            Prompt::ExportPub => config::open_console(&format!("ssh-keygen -y -f \"{text}\"")),
+            Prompt::NewButtonBar => {
+                let name = text.trim().to_string();
+                if name.is_empty() || name.eq_ignore_ascii_case("default") || self.settings.button_bars.iter().any(|b| b.0.eq_ignore_ascii_case(&name)) {
+                    self.status_msg = "Enter a name that is not used by another button bar.".into();
+                } else {
+                    self.settings.button_bars.push((name.clone(), Vec::new()));
+                    if let Some(s) = self.sessions.get_mut(self.active) {
+                        s.cfg.button_bar = name;
+                    }
+                    self.dirty = true;
+                }
+            }
             Prompt::TftpFolder => match crate::tftp::TftpServer::start("0.0.0.0:69", std::path::PathBuf::from(&text)) {
                 Ok(s) => {
                     self.tftp = Some(s);
@@ -5352,7 +5765,7 @@ impl eframe::App for YettyApp {
             }
             s.pump();
             if s.xfer.is_some() {
-                ctx.request_repaint_after(Duration::from_millis(300));
+                ctx.request_repaint_after(Duration::from_millis(40));
             }
         }
         // The window's own close button: ask first while a session is connected.
@@ -5403,6 +5816,10 @@ impl eframe::App for YettyApp {
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        // The configuration passphrase comes first: nothing else is shown (or connected) before it is typed.
+        if self.unlock_ui(&ctx) {
+            return;
+        }
         self.sync_groups();
         // Alt+letter is a shortcut or Meta, never typing: the window library also reports the letter as a text
         // event right after the key, which reached the focused box or the host ("g" after Alt+G). AltGr arrives as

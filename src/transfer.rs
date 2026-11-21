@@ -17,6 +17,8 @@ pub enum Proto {
     Xmodem,
     Xmodem1k,
     Ymodem,
+    Kermit,
+    Zmodem,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -37,6 +39,11 @@ enum Phase {
     RStart,
     RData,
     End,
+}
+
+enum Eng {
+    K(crate::kermit::Kermit),
+    Z(crate::zmodem::Zmodem),
 }
 
 pub struct Transfer {
@@ -61,6 +68,7 @@ pub struct Transfer {
     eot_seen: bool,
     c_sent: u32,
     last_out: Vec<u8>,
+    eng: Option<Eng>,
 }
 
 pub fn crc16(data: &[u8]) -> u16 {
@@ -98,6 +106,7 @@ impl Transfer {
             eot_seen: false,
             c_sent: 0,
             last_out: Vec::new(),
+            eng: None,
         }
     }
 
@@ -125,6 +134,44 @@ impl Transfer {
         t
     }
 
+    /// Copies the engine's progress into the fields the progress window reads.
+    fn sync(&mut self) {
+        let (status, done, failed, bytes_done, total, name) = match self.eng.as_ref() {
+            Some(Eng::K(k)) => (k.status.clone(), k.done, k.failed, k.bytes_done, k.total, k.name.clone()),
+            Some(Eng::Z(z)) => (z.status.clone(), z.done, z.failed, z.bytes_done, z.total, z.name.clone()),
+            None => return,
+        };
+        self.status = status;
+        self.done = done;
+        self.failed = failed;
+        self.bytes_done = bytes_done;
+        self.total = total;
+        self.name = name;
+    }
+
+    fn with_engine(proto: Proto, dir: Dir, eng: Eng) -> Transfer {
+        let mut t = Transfer::base(proto, dir, PathBuf::new());
+        t.eng = Some(eng);
+        t.sync();
+        t
+    }
+
+    pub fn new_kermit_send(path: &Path) -> Result<Transfer, String> {
+        Ok(Transfer::with_engine(Proto::Kermit, Dir::Send, Eng::K(crate::kermit::Kermit::new_send(path)?)))
+    }
+
+    pub fn new_kermit_receive(folder: PathBuf) -> Transfer {
+        Transfer::with_engine(Proto::Kermit, Dir::Receive, Eng::K(crate::kermit::Kermit::new_receive(folder)))
+    }
+
+    pub fn new_zmodem_send(files: Vec<PathBuf>) -> Result<Transfer, String> {
+        Ok(Transfer::with_engine(Proto::Zmodem, Dir::Send, Eng::Z(crate::zmodem::Zmodem::new_send(files)?)))
+    }
+
+    pub fn new_zmodem_receive(folder: PathBuf) -> Transfer {
+        Transfer::with_engine(Proto::Zmodem, Dir::Receive, Eng::Z(crate::zmodem::Zmodem::new_receive(folder)))
+    }
+
     pub fn label(&self) -> &'static str {
         match (self.proto, self.dir) {
             (Proto::Xmodem, Dir::Send) => "Send Xmodem",
@@ -132,6 +179,10 @@ impl Transfer {
             (Proto::Xmodem1k, Dir::Send) => "Send Xmodem-1K",
             (Proto::Xmodem1k, Dir::Receive) => "Receive Xmodem",
             (Proto::Ymodem, Dir::Send) => "Send Ymodem",
+            (Proto::Kermit, Dir::Send) => "Send Kermit",
+            (Proto::Kermit, Dir::Receive) => "Receive Kermit",
+            (Proto::Zmodem, Dir::Send) => "Send Zmodem",
+            (Proto::Zmodem, Dir::Receive) => "Receive Zmodem",
             (Proto::Ymodem, Dir::Receive) => "Receive Ymodem",
         }
     }
@@ -207,6 +258,15 @@ impl Transfer {
 
     /// Cancel: tell the other side.
     pub fn cancel(&mut self) -> Vec<u8> {
+        if self.eng.is_some() {
+            let out = match self.eng.as_mut() {
+                Some(Eng::K(k)) => k.cancel(),
+                Some(Eng::Z(z)) => z.cancel(),
+                None => Vec::new(),
+            };
+            self.sync();
+            return out;
+        }
         if !self.done {
             self.fail("Cancelled");
         }
@@ -214,6 +274,15 @@ impl Transfer {
     }
 
     pub fn tick(&mut self) -> Vec<u8> {
+        if self.eng.is_some() {
+            let out = match self.eng.as_mut() {
+                Some(Eng::K(k)) => k.tick(),
+                Some(Eng::Z(z)) => z.tick(),
+                None => Vec::new(),
+            };
+            self.sync();
+            return out;
+        }
         let mut out = Vec::new();
         if self.done {
             return out;
@@ -264,6 +333,15 @@ impl Transfer {
     }
 
     pub fn feed(&mut self, bytes: &[u8]) -> Vec<u8> {
+        if self.eng.is_some() {
+            let out = match self.eng.as_mut() {
+                Some(Eng::K(k)) => k.feed(bytes),
+                Some(Eng::Z(z)) => z.feed(bytes),
+                None => Vec::new(),
+            };
+            self.sync();
+            return out;
+        }
         let mut out = Vec::new();
         if self.done {
             return out;

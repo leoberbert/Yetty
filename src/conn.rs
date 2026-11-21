@@ -310,7 +310,7 @@ fn open_pty(
             if cfg.compression {
                 c.arg("-C");
             }
-            if cfg.ssh_verbose {
+            if cfg.ssh_verbose || (ssh && !cfg.identity_file.trim().is_empty()) {
                 c.arg("-v");
             }
             if ssh && cfg.remote_command_on && !cfg.remote_command.trim().is_empty() {

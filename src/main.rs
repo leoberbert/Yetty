@@ -2,17 +2,21 @@
 
 mod app;
 mod authdlg;
+mod certkey;
 mod config;
 mod conn;
 mod dialogs;
 mod globaldlg;
+mod kermit;
 mod keymapdlg;
+mod mnemonics;
 mod nativedlg;
 mod term;
 mod tftp;
 mod sftplist;
 mod transfer;
 mod wizard;
+mod zmodem;
 
 fn main() -> eframe::Result<()> {
     let args: Vec<String> = std::env::args().collect();

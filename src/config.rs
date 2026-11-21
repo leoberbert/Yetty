@@ -344,6 +344,26 @@ pub struct SessionConfig {
     pub print_footer: String,
     pub upload_dir: String,
     pub xmodem_1k: bool,
+    pub zmodem_upload_cmd: String,
+    pub zmodem_auto_download: bool,
+    /// Terminal > Emulation: fast output is shown in jumps (the screen updates after a burst, not line by line)
+    pub jump_scroll: bool,
+    /// Terminal > Emulation: redraw at most every 50 ms while output arrives
+    pub minimize_drawing: bool,
+    /// Mouse events go to a remote program that asked for them (xterm mouse reporting)
+    pub mouse_report: bool,
+    /// Shift keeps the mouse local (selection) while a remote program has mouse reporting on
+    pub shift_local_mouse: bool,
+    /// A click on the cursor line moves the cursor there (arrow keys are sent)
+    pub cursor_click: bool,
+    /// "None", "Linux" or "Xterm R5 / VT220": the codes of F1-F5
+    pub alt_keyboard: String,
+    pub show_hscrollbar: bool,
+    /// Name of the button bar this session shows ("" = the default one)
+    pub button_bar: String,
+    pub initial_pos_on: bool,
+    pub initial_x: i32,
+    pub initial_y: i32,
     pub download_dir: String,
 }
 
@@ -480,6 +500,19 @@ impl Default for SessionConfig {
             print_footer: String::new(),
             upload_dir: String::new(),
             xmodem_1k: false,
+            zmodem_upload_cmd: "rz".into(),
+            zmodem_auto_download: true,
+            jump_scroll: false,
+            minimize_drawing: false,
+            mouse_report: true,
+            shift_local_mouse: true,
+            cursor_click: false,
+            alt_keyboard: "None".into(),
+            show_hscrollbar: false,
+            button_bar: String::new(),
+            initial_pos_on: false,
+            initial_x: 0,
+            initial_y: 0,
             download_dir: String::new(),
         }
     }
@@ -594,6 +627,8 @@ pub struct Settings {
     pub default_serial: SessionConfig,
     pub default_local: SessionConfig,
     pub buttons: Vec<ButtonDef>,
+    /// Other named button bars (a session picks one in its Window options)
+    pub button_bars: Vec<(String, Vec<ButtonDef>)>,
     pub commands: Vec<CommandDef>,
     pub command_folders: Vec<String>,
     pub cmd_title_bar: bool,
@@ -615,6 +650,8 @@ pub struct Settings {
     /// Command Manager folders that are closed
     pub cmd_tree_closed: Vec<String>,
     pub ansi_palette: Vec<[u8; 3]>,
+    /// Verifier of the configuration passphrase (empty: no passphrase, secrets use the Windows user key only).
+    pub config_passphrase_check: String,
     pub tab_close_buttons: bool,
     pub paste_delay_on: bool,
     pub paste_delay_ms: u32,
@@ -656,6 +693,7 @@ impl Default for Settings {
             command_folders: Vec::new(),
             cmd_title_bar: true,
             cmd_send_immediately: false,
+            button_bars: Vec::new(),
             buttons: vec![
                 ButtonDef { label: "Clear".into(), text: "clear\\r".into() },
                 ButtonDef { label: "Who am I".into(), text: "whoami\\r".into() },
@@ -675,6 +713,7 @@ impl Default for Settings {
             tree_open: Vec::new(),
             cmd_tree_closed: Vec::new(),
             ansi_palette: Vec::new(),
+            config_passphrase_check: String::new(),
             tab_close_buttons: true,
             paste_delay_on: false,
             paste_delay_ms: 5,
@@ -979,46 +1018,126 @@ mod dpapi {
 }
 
 const ENC_PREFIX: &str = "dpapi:";
+/// Protected with the Windows user's key and the configuration passphrase as extra entropy.
+const ENC2_PREFIX: &str = "dpapi2:";
+const PASS_CHECK: &str = "yetty-configuration-passphrase";
 
-pub fn is_protected(s: &str) -> bool {
-    s.starts_with(ENC_PREFIX)
+static PASSPHRASE: std::sync::RwLock<Option<String>> = std::sync::RwLock::new(None);
+
+/// The configuration passphrase in use (set after the person typed it, or after changing it).
+pub fn set_config_passphrase(p: Option<&str>) {
+    if let Ok(mut w) = PASSPHRASE.write() {
+        *w = p.filter(|s| !s.is_empty()).map(|s| s.to_string());
+    }
 }
 
-/// Encrypt a password for storing in the settings file.
-pub fn protect(plain: &str) -> String {
+fn current_passphrase() -> Option<String> {
+    PASSPHRASE.read().ok().and_then(|p| p.clone())
+}
+
+pub fn is_protected(s: &str) -> bool {
+    s.starts_with(ENC_PREFIX) || s.starts_with(ENC2_PREFIX)
+}
+
+#[cfg(windows)]
+fn dpapi_protect(plain: &[u8], entropy: Option<&[u8]>) -> Option<Vec<u8>> {
+    unsafe {
+        let mut data = plain.to_vec();
+        let input = dpapi::Blob { cb: data.len() as u32, pb: data.as_mut_ptr() };
+        let mut ent = entropy.map(|e| e.to_vec());
+        let ent_blob = ent.as_mut().map(|e| dpapi::Blob { cb: e.len() as u32, pb: e.as_mut_ptr() });
+        let mut out = dpapi::Blob { cb: 0, pb: std::ptr::null_mut() };
+        let ent_ptr = ent_blob.as_ref().map_or(std::ptr::null(), |b| b as *const dpapi::Blob);
+        if dpapi::CryptProtectData(&input, std::ptr::null(), ent_ptr, std::ptr::null_mut(), std::ptr::null_mut(), 0, &mut out) != 0 && !out.pb.is_null() {
+            let bytes = std::slice::from_raw_parts(out.pb, out.cb as usize).to_vec();
+            dpapi::LocalFree(out.pb as *mut _);
+            return Some(bytes);
+        }
+    }
+    None
+}
+
+#[cfg(windows)]
+fn dpapi_unprotect(cipher: &[u8], entropy: Option<&[u8]>) -> Option<Vec<u8>> {
+    unsafe {
+        let mut data = cipher.to_vec();
+        let input = dpapi::Blob { cb: data.len() as u32, pb: data.as_mut_ptr() };
+        let mut ent = entropy.map(|e| e.to_vec());
+        let ent_blob = ent.as_mut().map(|e| dpapi::Blob { cb: e.len() as u32, pb: e.as_mut_ptr() });
+        let mut out = dpapi::Blob { cb: 0, pb: std::ptr::null_mut() };
+        let ent_ptr = ent_blob.as_ref().map_or(std::ptr::null(), |b| b as *const dpapi::Blob);
+        if dpapi::CryptUnprotectData(&input, std::ptr::null_mut(), ent_ptr, std::ptr::null_mut(), std::ptr::null_mut(), 0, &mut out) != 0 && !out.pb.is_null() {
+            let plain = std::slice::from_raw_parts(out.pb, out.cb as usize).to_vec();
+            dpapi::LocalFree(out.pb as *mut _);
+            return Some(plain);
+        }
+    }
+    None
+}
+
+#[cfg(not(windows))]
+fn dpapi_protect(_plain: &[u8], _entropy: Option<&[u8]>) -> Option<Vec<u8>> {
+    None
+}
+
+#[cfg(not(windows))]
+fn dpapi_unprotect(_cipher: &[u8], _entropy: Option<&[u8]>) -> Option<Vec<u8>> {
+    None
+}
+
+/// Encrypt with the given passphrase (None: the Windows user's key only).
+pub fn protect_with(plain: &str, passphrase: Option<&str>) -> String {
     if plain.is_empty() || is_protected(plain) {
         return plain.to_string();
     }
-    #[cfg(windows)]
-    unsafe {
-        let mut data = plain.as_bytes().to_vec();
-        let input = dpapi::Blob { cb: data.len() as u32, pb: data.as_mut_ptr() };
-        let mut out = dpapi::Blob { cb: 0, pb: std::ptr::null_mut() };
-        if dpapi::CryptProtectData(&input, std::ptr::null(), std::ptr::null(), std::ptr::null_mut(), std::ptr::null_mut(), 0, &mut out) != 0 && !out.pb.is_null() {
-            let bytes = std::slice::from_raw_parts(out.pb, out.cb as usize).to_vec();
-            dpapi::LocalFree(out.pb as *mut _);
-            return format!("{ENC_PREFIX}{}", bytes.iter().map(|b| format!("{b:02x}")).collect::<String>());
+    let pass = passphrase.filter(|p| !p.is_empty());
+    match dpapi_protect(plain.as_bytes(), pass.map(|p| p.as_bytes())) {
+        Some(bytes) => {
+            let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+            format!("{}{hex}", if pass.is_some() { ENC2_PREFIX } else { ENC_PREFIX })
         }
+        None => plain.to_string(),
     }
-    plain.to_string()
+}
+
+/// The text in clear; "" when it cannot be decrypted (wrong or missing passphrase).
+pub fn unprotect_with(stored: &str, passphrase: Option<&str>) -> String {
+    let (hex, needs_pass) = if let Some(h) = stored.strip_prefix(ENC2_PREFIX) {
+        (h, true)
+    } else if let Some(h) = stored.strip_prefix(ENC_PREFIX) {
+        (h, false)
+    } else {
+        return stored.to_string();
+    };
+    let bytes: Vec<u8> = (0..hex.len() / 2).filter_map(|i| u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16).ok()).collect();
+    let entropy = if needs_pass {
+        match passphrase.filter(|p| !p.is_empty()) {
+            Some(p) => Some(p.as_bytes()),
+            None => return String::new(),
+        }
+    } else {
+        None
+    };
+    dpapi_unprotect(&bytes, entropy).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default()
+}
+
+/// Encrypt a password for storing in the settings file (with the configuration passphrase when one is set).
+pub fn protect(plain: &str) -> String {
+    protect_with(plain, current_passphrase().as_deref())
 }
 
 /// The password in clear text (text that was never encrypted is returned as it is).
 pub fn unprotect(stored: &str) -> String {
-    let Some(hex) = stored.strip_prefix(ENC_PREFIX) else { return stored.to_string() };
-    let bytes: Vec<u8> = (0..hex.len() / 2).filter_map(|i| u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16).ok()).collect();
-    #[cfg(windows)]
-    unsafe {
-        let mut data = bytes;
-        let input = dpapi::Blob { cb: data.len() as u32, pb: data.as_mut_ptr() };
-        let mut out = dpapi::Blob { cb: 0, pb: std::ptr::null_mut() };
-        if dpapi::CryptUnprotectData(&input, std::ptr::null_mut(), std::ptr::null(), std::ptr::null_mut(), std::ptr::null_mut(), 0, &mut out) != 0 && !out.pb.is_null() {
-            let plain = String::from_utf8_lossy(std::slice::from_raw_parts(out.pb, out.cb as usize)).into_owned();
-            dpapi::LocalFree(out.pb as *mut _);
-            return plain;
-        }
-    }
-    String::new()
+    unprotect_with(stored, current_passphrase().as_deref())
+}
+
+/// What is stored in the settings so the passphrase can be checked at the next start.
+pub fn passphrase_check_value(passphrase: &str) -> String {
+    protect_with(PASS_CHECK, Some(passphrase))
+}
+
+pub fn passphrase_matches(check: &str, passphrase: &str) -> bool {
+    !passphrase.is_empty() && unprotect_with(check, Some(passphrase)) == PASS_CHECK
 }
 
 #[cfg(test)]
@@ -1029,6 +1148,30 @@ mod tests {
         #[cfg(windows)]
         assert!(super::is_protected(&enc) && !enc.contains("s3cret"));
         assert_eq!(super::unprotect(&enc), "s3cret é");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn passphrase_protects_and_rekey_moves_secrets() {
+        let enc = super::protect_with("pw1", Some("open sesame"));
+        assert!(enc.starts_with("dpapi2:") && !enc.contains("pw1"));
+        assert_eq!(super::unprotect_with(&enc, Some("open sesame")), "pw1");
+        assert_eq!(super::unprotect_with(&enc, Some("wrong")), "");
+        assert_eq!(super::unprotect_with(&enc, None), "");
+        let check = super::passphrase_check_value("open sesame");
+        assert!(super::passphrase_matches(&check, "open sesame") && !super::passphrase_matches(&check, "other"));
+
+        let mut st = super::Settings::default();
+        let mut c = super::SessionConfig::default();
+        c.saved_password = super::protect_with("hunter2", None);
+        st.sessions.push(c);
+        st.rekey(None, Some("open sesame"));
+        assert!(st.sessions[0].saved_password.starts_with("dpapi2:"));
+        assert_eq!(super::unprotect_with(&st.sessions[0].saved_password, Some("open sesame")), "hunter2");
+        st.rekey(Some("open sesame"), None);
+        assert!(st.sessions[0].saved_password.starts_with("dpapi:"));
+        assert_eq!(super::unprotect_with(&st.sessions[0].saved_password, None), "hunter2");
+        assert!(st.config_passphrase_check.is_empty());
     }
 }
 
@@ -1199,5 +1342,56 @@ pub fn ansi_palette() -> [Rgb; 16] {
 pub fn set_ansi_palette(p: [Rgb; 16]) {
     if let Ok(mut w) = PALETTE.write() {
         *w = if p == ANSI_PALETTE { None } else { Some(p) };
+    }
+}
+
+static SCHEME_OVERRIDES_ANSI: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+/// Global Options > ANSI Color "Color scheme overrides ANSI color".
+pub fn scheme_overrides_ansi() -> bool {
+    SCHEME_OVERRIDES_ANSI.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+pub fn set_scheme_overrides_ansi(on: bool) {
+    SCHEME_OVERRIDES_ANSI.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+impl SessionConfig {
+    /// Re-encrypts the stored secrets of this session (see `Settings::rekey`).
+    pub fn rekey_secrets(&mut self, old: Option<&str>, new: Option<&str>) {
+        for s in [&mut self.saved_password, &mut self.key_passphrase] {
+            if !s.is_empty() {
+                let plain = unprotect_with(s, old);
+                *s = protect_with(&plain, new);
+            }
+        }
+    }
+}
+
+impl Settings {
+    /// Re-encrypts every stored secret: read with `old`, written with `new` (None: the Windows user key only) and
+    /// updates the verifier. The caller has checked `old`.
+    pub fn rekey(&mut self, old: Option<&str>, new: Option<&str>) {
+        for c in &mut self.sessions {
+            c.rekey_secrets(old, new);
+        }
+        self.default_session.rekey_secrets(old, new);
+        self.default_serial.rekey_secrets(old, new);
+        self.default_local.rekey_secrets(old, new);
+        for (_, list) in &mut self.snapshots {
+            for c in list {
+                c.rekey_secrets(old, new);
+            }
+        }
+        for c in &mut self.global.last_sessions {
+            c.rekey_secrets(old, new);
+        }
+        for c in &mut self.credentials {
+            if !c.pass.is_empty() {
+                let plain = unprotect_with(&c.pass, old);
+                c.pass = protect_with(&plain, new);
+            }
+        }
+        self.config_passphrase_check = new.filter(|p| !p.is_empty()).map(passphrase_check_value).unwrap_or_default();
     }
 }
