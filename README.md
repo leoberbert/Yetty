@@ -272,6 +272,13 @@ Cada sessão guarda protocolo, host, porta, usuário, método de autenticação,
 - **Esquemas de cor** do terminal: 23 opções, de cores clássicas a temas inspirados em editores.
 - Paleta ANSI editável em **Global Options > ANSI Color**.
 - Realce de palavras-chave: busca com `Alt+U`.
+- **Color scheme overrides ANSI color** (Global Options > ANSI Color): com um esquema em uso, o preto e o branco ANSI usam o fundo e o texto do esquema.
+- **Jump scroll** e **Minimize drawing** (Session Options > Emulation): saída rápida desenhada a cada 120 ms ou 50 ms.
+- **Alternate keyboard** (None, Linux, Xterm R5/VT220): códigos de F1 a F5.
+- **Mouse**: programas que pedem o mouse (vim, tmux) o recebem no padrão xterm; `Shift` mantém a seleção local (**Shift forces local mouse**). **Position cursor on click** move o cursor da linha de comando com um clique.
+- **Barra de rolagem horizontal** para terminais de tamanho fixo mais largos que a janela; `Shift`+roda rola de lado.
+- **Barras de botões** com nome (menu de contexto do botão ➕) escolhidas por sessão, e **posição inicial** da janela.
+- **Mnemônicos de menu** do SecureCRT: `Alt`+letra abre o menu e as letras sublinhadas escolhem os itens.
 
 ### Transferência de arquivos
 
@@ -281,7 +288,7 @@ Menu **Transfer**.
 - **Servidor TFTP** embutido, na porta UDP 69, com pasta escolhida pelo usuário. Útil para equipamentos que fazem boot por rede.
 - **SFTP**: navegar no servidor e transferir por arrastar e soltar de arquivos do Windows para a sessão.
 
-Kermit e Zmodem não estão implementados (ver [Limitações](#limitações-conhecidas)).
+- **Kermit** e **Zmodem**, em envio e recebimento. No Zmodem há a **Zmodem Upload List** e o **Start Zmodem Upload**, que executa antes o comando de upload da sessão (padrão `rz`). Um pedido `sz` do servidor inicia o download sozinho (desligável em Session Options). Testados em loopback; ainda não contra servidores reais.
 
 ### Scripts e gravação
 
@@ -309,7 +316,12 @@ Menu **Tools**.
 - **Manage Agent Keys**: lista e gerencia chaves do `ssh-agent` (`ssh-add -l`).
 - **Manage Saved Credentials**: lista e remove senhas salvas.
 
-Senhas salvas são cifradas com DPAPI e só podem ser lidas pelo mesmo usuário do Windows.
+- **Export Public Key from Certificate**: extrai a chave pública (RSA, ECDSA, Ed25519) de um certificado PEM, DER ou PFX/P12 para uma linha OpenSSH.
+- **Change Configuration Passphrase**: protege as senhas salvas com uma passphrase pedida ao iniciar o Yetty. Se for esquecida, as senhas salvas se perdem.
+
+Senhas salvas são cifradas com DPAPI e só podem ser lidas pelo mesmo usuário do Windows. Com passphrase, ela entra também na cifragem.
+
+Quando a chave de identidade escolhida é recusada pelo servidor, abre a janela **Public Key Authentication Failed**.
 
 ### Log, impressão e snapshots
 
@@ -370,13 +382,12 @@ Senhas salvas são cifradas com DPAPI e só podem ser lidas pelo mesmo usuário 
 
 Estes itens **não estão implementados**:
 
-- Kermit e Zmodem.
+- Kermit e Zmodem testados apenas em loopback.
 - SSH1.
 - TAPI.
 - Scripts em VBScript e Python.
-- Alteração da senha da chave (Change Configuration Passphrase).
 - Grupos de abas com funcionalidade parcial.
-- Barra de rolagem horizontal no terminal.
+- Mnemônicos de menu nos submenus e no menu Window.
 
 Telnet/TLS depende do SChannel do Windows e pode não aceitar todos os certificados de servidores antigos.
 
