@@ -19,7 +19,7 @@ Legenda: **Fechado** = implementado e verificado como indicado; **Estimado** = c
 | P-09 | Session list sort order | Fechado | O original tem uma caixa "Sort alphabetically" (texto lido em `SecureCRT.exe`), não uma lista; trocado |
 | P-10a | Jump scroll | Fechado (semântica estimada) | Saída rápida é desenhada a cada 120 ms |
 | P-10b | Minimize drawing | Fechado (semântica estimada) | Redesenho no máximo a cada 50 ms |
-| P-10c | Shift forces local mouse | Fechado | Exigiu implementar o relato de mouse do xterm (X10/normal/botão/qualquer movimento, SGR e padrão) — antes nenhum clique ia ao programa remoto. Opção "Send mouse events…" (ligada) controla o relato. **Não testado contra vim/tmux** |
+| P-10c | Shift forces local mouse | Fechado | Exigiu implementar o relato de mouse do xterm (X10/normal/botão/qualquer movimento, SGR e padrão) — antes nenhum clique ia ao programa remoto. Opção "Send mouse events…" (ligada) controla o relato. Codificação em `mouse_seq` (`term.rs`), testada no WSL (`cargo test real_mouse -- --ignored --nocapture --test-threads=1`): vim 9.1 (clique move o cursor para a célula certa, roda rola), tmux (clique troca o painel ativo) e codificação padrão (não SGR) por um leitor de pty. **Não exercitado:** a janela do Yetty em si (eventos do egui → `report_mouse`), a lógica de Shift e o modo X10 |
 | P-10d | Position cursor on click | Fechado | Clique na linha do cursor envia setas até a coluna |
 | P-10e | Alternate keyboard | Fechado (lista estimada) | None / Linux / Xterm R5-VT220: códigos de F1–F5. A lista do original não foi vista |
 | P-10f | Horizontal scroll bar | Fechado | Session Options > Window e View; vale com "Disable resize" e terminal mais largo que a janela; Shift+roda rola de lado |

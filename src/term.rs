@@ -1554,10 +1554,8 @@ pub fn show(ui: &mut egui::Ui, s: &mut Session, opts: &ViewOptions, rect: Rect) 
             let (c, r) = ((((at.x - text_rect.min.x) / cw).max(0.0) as u16).min(cols - 1), (((at.y - text_rect.min.y) / ch).max(0.0) as u16).min(rows - 1));
             let b: u8 = if n > 0 { 64 } else { 65 };
             for _ in 0..n.unsigned_abs().min(10) {
-                if sgr {
-                    s.send(format!("\x1b[<{};{};{}M", b, c + 1, r + 1).as_bytes());
-                } else if c + 1 <= 222 && r + 1 <= 222 {
-                    s.send(&[0x1b, b'[', b'M', 32 + b, 32 + (c + 1) as u8, 32 + (r + 1) as u8]);
+                if let Some(seq) = mouse_seq(b, c, r, true, sgr) {
+                    s.send(&seq);
                 }
             }
         } else if dy != 0.0 && need_h && ui.input(|i| i.modifiers.shift) {
@@ -2050,6 +2048,18 @@ fn alt_function_key(kind: &str, key: egui::Key, m: egui::Modifiers) -> Option<Ve
     }
 }
 
+/// xterm mouse report for `button` (modifier bits already added) at cell (c, r), 0-based. The default encoding
+/// cannot address cells past 222.
+fn mouse_seq(button: u8, c: u16, r: u16, press: bool, sgr: bool) -> Option<Vec<u8>> {
+    if sgr {
+        Some(format!("\x1b[<{};{};{}{}", button, c + 1, r + 1, if press { 'M' } else { 'm' }).into_bytes())
+    } else if c + 1 <= 222 && r + 1 <= 222 {
+        Some(vec![0x1b, b'[', b'M', 32 + button, 32 + (c + 1) as u8, 32 + (r + 1) as u8])
+    } else {
+        None
+    }
+}
+
 /// Tell a remote program about the mouse (xterm mouse reporting: X10 / normal / button-motion / any-motion, default or SGR).
 fn report_mouse(ui: &egui::Ui, s: &mut Session, text_rect: Rect, cw: f32, ch: f32, cols: u16, rows: u16) {
     use vt100::{MouseProtocolEncoding, MouseProtocolMode};
@@ -2074,10 +2084,8 @@ fn report_mouse(ui: &egui::Ui, s: &mut Session, text_rect: Rect, cw: f32, ch: f3
         if mods.ctrl {
             b += 16;
         }
-        if sgr {
-            out.extend_from_slice(format!("\x1b[<{};{};{}{}", b, c + 1, r + 1, if press { 'M' } else { 'm' }).as_bytes());
-        } else if c + 1 <= 222 && r + 1 <= 222 {
-            out.extend_from_slice(&[0x1b, b'[', b'M', 32 + b, 32 + (c + 1) as u8, 32 + (r + 1) as u8]);
+        if let Some(seq) = mouse_seq(b, c, r, press, sgr) {
+            out.extend_from_slice(&seq);
         }
         s.mouse_last = (c, r);
     };
@@ -2373,4 +2381,169 @@ fn strip_escapes(s: &str) -> String {
         }
     }
     out
+}
+
+/// Mouse reports against real vim and tmux in WSL (`cargo test real_mouse -- --ignored --nocapture --test-threads=1`).
+#[cfg(test)]
+mod real_mouse {
+    use super::mouse_seq;
+    use std::io::{Read, Write};
+    use std::process::{Child, ChildStdin, Command, Stdio};
+    use std::sync::mpsc::{self, Receiver};
+    use std::time::{Duration, Instant};
+    use vt100::{MouseProtocolEncoding, MouseProtocolMode};
+
+    struct Prog {
+        child: Child,
+        stdin: ChildStdin,
+        rx: Receiver<Vec<u8>>,
+        parser: vt100::Parser,
+    }
+
+    fn wsl_path(p: &std::path::Path) -> String {
+        let s = p.to_string_lossy().replace('\\', "/");
+        format!("/mnt/{}{}", s[..1].to_lowercase(), &s[2..])
+    }
+
+    fn wsl(cmd: &str) -> String {
+        let o = Command::new("wsl.exe").args(["-e", "sh", "-c", cmd]).output().unwrap();
+        String::from_utf8_lossy(&o.stdout).trim().to_string()
+    }
+
+    fn dir(name: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!("yetty_mouse_{name}"));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        let text: String = (1..=100).map(|i| format!("line {i:03} abcdefghijklmnopqrstuvwxyz\n")).collect();
+        std::fs::write(d.join("f.txt"), text).unwrap();
+        d
+    }
+
+    impl Prog {
+        /// `cmd` runs on a pty of 24x80 in `d`.
+        fn start(d: &std::path::Path, cmd: &str) -> Prog {
+            let line = format!("cd '{}' && TERM=xterm-256color script -qfec \"stty rows 24 cols 80; {}\" /dev/null", wsl_path(d), cmd);
+            let mut child = Command::new("wsl.exe").args(["-e", "sh", "-c", &line]).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn().unwrap();
+            let stdin = child.stdin.take().unwrap();
+            let mut stdout = child.stdout.take().unwrap();
+            let (tx, rx) = mpsc::channel::<Vec<u8>>();
+            std::thread::spawn(move || {
+                let mut b = [0u8; 4096];
+                while let Ok(n) = stdout.read(&mut b) {
+                    if n == 0 || tx.send(b[..n].to_vec()).is_err() {
+                        break;
+                    }
+                }
+            });
+            Prog { child, stdin, rx, parser: vt100::Parser::new(24, 80, 0) }
+        }
+
+        fn pump(&mut self, ms: u64) {
+            let end = Instant::now() + Duration::from_millis(ms);
+            while let Some(left) = end.checked_duration_since(Instant::now()) {
+                if let Ok(d) = self.rx.recv_timeout(left) {
+                    self.parser.process(&d);
+                }
+            }
+        }
+
+        fn send(&mut self, b: &[u8]) {
+            self.stdin.write_all(b).unwrap();
+            self.stdin.flush().unwrap();
+            self.pump(300);
+        }
+
+        /// Left click at 0-based cell, encoded the way the terminal window does it.
+        fn click(&mut self, c: u16, r: u16) {
+            let sgr = self.parser.screen().mouse_protocol_encoding() == MouseProtocolEncoding::Sgr;
+            let mut b = mouse_seq(0, c, r, true, sgr).unwrap();
+            b.extend(mouse_seq(if sgr { 0 } else { 3 }, c, r, false, sgr).unwrap());
+            self.send(&b);
+        }
+
+        fn wheel(&mut self, up: bool, c: u16, r: u16) {
+            let sgr = self.parser.screen().mouse_protocol_encoding() == MouseProtocolEncoding::Sgr;
+            self.send(&mouse_seq(if up { 64 } else { 65 }, c, r, true, sgr).unwrap());
+        }
+
+        fn mode(&self) -> (MouseProtocolMode, MouseProtocolEncoding) {
+            (self.parser.screen().mouse_protocol_mode(), self.parser.screen().mouse_protocol_encoding())
+        }
+    }
+
+    impl Drop for Prog {
+        fn drop(&mut self) {
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
+    }
+
+    fn vim_case(name: &str, ttymouse: &str, want_sgr: bool) {
+        let d = dir(name);
+        let mut p = Prog::start(&d, &format!("vim -u NONE -N -c 'set mouse=a nowrap ttymouse={ttymouse}' f.txt"));
+        p.pump(2500);
+        let (mode, enc) = p.mode();
+        println!("{name}: mode {mode:?}, encoding {enc:?}");
+        assert!(mode != MouseProtocolMode::None, "{name}: vim did not enable mouse reporting");
+        assert_eq!(enc == MouseProtocolEncoding::Sgr, want_sgr, "{name}: encoding {enc:?}");
+        p.click(10, 3);
+        p.send(b":call writefile([line('.').' '.col('.')], 'pos.txt')\r");
+        p.pump(500);
+        let pos = std::fs::read_to_string(d.join("pos.txt")).unwrap_or_default();
+        assert_eq!(pos.trim(), "4 11", "{name}: click position");
+        p.wheel(false, 10, 3);
+        p.wheel(false, 10, 3);
+        p.send(b":call writefile([line('w0')], 'top.txt')\r");
+        p.pump(500);
+        let top: i32 = std::fs::read_to_string(d.join("top.txt")).unwrap_or_default().trim().parse().unwrap_or(-1);
+        assert!(top > 1, "{name}: wheel did not scroll (top line {top})");
+    }
+
+    #[test]
+    #[ignore]
+    fn real_mouse_vim_sgr() {
+        vim_case("vim_sgr", "sgr", true);
+    }
+
+    /// vim and tmux both switch to SGR, so the default (X10-style) encoding is checked with a pty reader that asks for it.
+    #[test]
+    #[ignore]
+    fn real_mouse_default_encoding_through_a_pty() {
+        let d = dir("default");
+        let script = "stty raw -echo\nprintf '\\033[?1000h'\ndd bs=1 count=12 2>/dev/null | od -An -v -tx1 | tr -d ' \\n' > got.hex\n";
+        std::fs::write(d.join("r.sh"), script).unwrap();
+        let mut p = Prog::start(&d, "sh r.sh");
+        for _ in 0..30 {
+            p.pump(500);
+            if p.mode().0 != MouseProtocolMode::None {
+                break;
+            }
+        }
+        let (mode, enc) = p.mode();
+        assert_eq!((mode, enc), (MouseProtocolMode::PressRelease, MouseProtocolEncoding::Default));
+        p.click(10, 3);
+        p.pump(500);
+        // press: ESC [ M (32+0) (32+11) (32+4); release: button 3
+        assert_eq!(std::fs::read_to_string(d.join("got.hex")).unwrap_or_default(), "1b5b4d202b241b5b4d232b24");
+    }
+
+    #[test]
+    #[ignore]
+    fn real_mouse_tmux_pane_focus() {
+        let d = dir("tmux");
+        wsl("tmux -L ytm kill-server");
+        let mut p = Prog::start(&d, "tmux -f /dev/null -L ytm new-session -s t \\\\; set -g mouse on \\\\; split-window -h");
+        p.pump(3000);
+        let (mode, enc) = p.mode();
+        println!("tmux: mode {mode:?}, encoding {enc:?}");
+        assert!(mode != MouseProtocolMode::None, "tmux did not enable mouse reporting");
+        let active = || wsl("tmux -L ytm display -p -t t '#{pane_index}'");
+        assert_eq!(active(), "1", "new pane should be active");
+        p.click(10, 5); // inside the left pane
+        let after_left = active();
+        p.click(65, 5); // inside the right pane
+        let after_right = active();
+        wsl("tmux -L ytm kill-server");
+        assert_eq!((after_left.as_str(), after_right.as_str()), ("0", "1"), "pane focus did not follow the clicks");
+    }
 }
