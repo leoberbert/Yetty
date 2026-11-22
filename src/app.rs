@@ -593,6 +593,7 @@ fn cmd_icon_color(name: &str) -> Color32 {
 }
 
 /// One folder of the Command Manager tree (folders first, then its commands).
+#[allow(clippy::too_many_arguments)]
 fn cmd_tree_node(ui: &mut egui::Ui, st: &Settings, path: &str, filter: &str, sel: &mut Option<usize>, sel_folder: &mut Option<String>, act: &mut Option<CmdAct>, force: Option<bool>, can_paste: bool, target: u8, closed_change: &mut Vec<(String, bool)>) {
     let parent_of = |f: &str| f.rsplit_once('/').map(|x| x.0.to_string()).unwrap_or_default();
     let mut folders: Vec<String> = Vec::new();
@@ -1688,7 +1689,6 @@ impl YettyApp {
             ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(egui::WindowLevel::AlwaysOnTop));
         }
         // Global Options > Terminal > "Auto reconnect" (every session) and its interval
-        let mut cfg = cfg;
         cfg.auto_reconnect |= self.settings.global.auto_reconnect;
         let mut s = Session::new_with_key(id, cfg, ctx, global);
         s.reconnect_secs = u64::from(self.settings.global.reconnect_secs.max(1));
@@ -4892,7 +4892,7 @@ impl YettyApp {
                         self.error_msg = Some(format!("A session named \"{}\" already exists in this folder.", cfg.name));
                     } else {
                         // the wizard only creates the session (in the Session Manager), as in the original
-                        self.settings.sessions.push(cfg);
+                        self.settings.sessions.push(*cfg);
                         self.selected = Some(self.settings.sessions.len() - 1);
                         if dont_use_again {
                             self.settings.global.new_session_wizard = false;

@@ -538,10 +538,9 @@ fn tcp_connect(cfg: &SessionConfig) -> Result<TcpStream, String> {
 }
 
 fn telnet_filter(cfg: &SessionConfig) -> Option<Telnet> {
-    cfg.protocol.is_telnet().then(|| {
-        let mut t = Telnet::default();
-        t.ttype = term_name(&cfg.emulation).to_uppercase();
-        t
+    cfg.protocol.is_telnet().then(|| Telnet {
+        ttype: term_name(&cfg.emulation).to_uppercase(),
+        ..Default::default()
     })
 }
 

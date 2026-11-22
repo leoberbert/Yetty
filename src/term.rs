@@ -2347,9 +2347,11 @@ mod pubkey_tests {
     use super::*;
 
     fn session() -> Session {
-        let mut cfg = SessionConfig::default();
-        cfg.protocol = config::Protocol::Ssh;
-        cfg.identity_file = "C:\\Users\\x\\.ssh\\id_test".into();
+        let cfg = SessionConfig {
+            protocol: config::Protocol::Ssh,
+            identity_file: "C:\\Users\\x\\.ssh\\id_test".into(),
+            ..Default::default()
+        };
         Session::new_with_key(1, cfg, &egui::Context::default(), String::new())
     }
 
