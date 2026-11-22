@@ -1,0 +1,103 @@
+name: Release
+
+# Somente manual: Actions > Release > Run workflow.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Versão a publicar (ex.: 0.1.0). Deve ser igual à de Cargo.toml."
+        required: true
+        type: string
+      prerelease:
+        description: "Marcar como pré-release"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Só publica a partir da main e com a versão coerente com Cargo.toml.
+  validate:
+    name: Validar versão
+    runs-on: ubuntu-latest
+    steps:
+      - name: Exigir branch main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Release só pode ser gerada a partir da branch main (atual: ${{ github.ref }})."
+          exit 1
+
+      - uses: actions/checkout@v4
+
+      - name: Conferir versão e tag
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::Versão inválida: '$VERSION' (use o formato 1.2.3)."
+            exit 1
+          fi
+          CARGO_VERSION=$(grep -m1 '^version' Cargo.toml | sed -E 's/version *= *"([^"]+)"/\1/')
+          if [ "$CARGO_VERSION" != "$VERSION" ]; then
+            echo "::error::Cargo.toml tem versão $CARGO_VERSION, mas foi pedida $VERSION. Atualize Cargo.toml (e Cargo.lock) via PR antes."
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null 2>&1; then
+            echo "::error::A tag v$VERSION já existe."
+            exit 1
+          fi
+
+  # Mesmos testes do PR.
+  test:
+    name: Testes
+    needs: validate
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    name: Gerar e publicar release
+    needs: [validate, test]
+    runs-on: windows-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write # criar tag e release
+    env:
+      VERSION: ${{ inputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain Rust estável
+        run: rustup toolchain install stable --profile minimal --target x86_64-pc-windows-msvc
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build release
+        run: cargo build --release --locked
+
+      - name: Empacotar
+        shell: bash
+        run: |
+          set -euo pipefail
+          NAME="yetty-v${VERSION}-windows-x64"
+          mkdir -p "dist/$NAME"
+          cp target/release/yetty.exe LICENSE README.md "dist/$NAME/"
+          cd dist
+          7z a -tzip "$NAME.zip" "$NAME" >/dev/null
+          sha256sum "$NAME.zip" > "$NAME.zip.sha256"
+          cat "$NAME.zip.sha256"
+
+      - name: Publicar GitHub Release
+        shell: bash
+        env:
+          PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          set -euo pipefail
+          FLAGS=(--target "$GITHUB_SHA" --title "Yetty v${VERSION}" --generate-notes)
+          if [ "$PRERELEASE" = "true" ]; then FLAGS+=(--prerelease); fi
+          gh release create "v${VERSION}" dist/*.zip dist/*.sha256 "${FLAGS[@]}"

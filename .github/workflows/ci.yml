@@ -1,0 +1,63 @@
+name: CI
+
+# Roda em todo PR para main e quando chamado pelo workflow de release (manual).
+on:
+  pull_request:
+    branches: [main]
+  workflow_call:
+
+# Um PR novo cancela a execução anterior do mesmo PR.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  # O Yetty depende de Win32 (DPAPI, ConPTY, MDL2), então tudo roda em Windows.
+  build-test:
+    name: Build e testes (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain Rust estável
+        run: rustup toolchain install stable --profile minimal --target x86_64-pc-windows-msvc
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build (debug)
+        run: cargo build --locked --all-targets
+
+      - name: Testes
+        run: cargo test --locked
+
+  # Informativo: o código atual ainda tem avisos do clippy e não está formatado
+  # com rustfmt. Não bloqueia o PR; remova o continue-on-error quando zerar.
+  lint:
+    name: Clippy e rustfmt (informativo)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    continue-on-error: true
+    env:
+      RUSTFLAGS: ""
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain Rust estável
+        run: rustup toolchain install stable --profile minimal --component clippy,rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: rustfmt
+        run: cargo fmt --check
+
+      - name: Clippy
+        if: ${{ !cancelled() }}
+        run: cargo clippy --locked --all-targets -- -D warnings
