@@ -278,7 +278,7 @@ Cada sessão guarda protocolo, host, porta, usuário, método de autenticação,
 - **Mouse**: programas que pedem o mouse (vim, tmux) o recebem no padrão xterm; `Shift` mantém a seleção local (**Shift forces local mouse**). **Position cursor on click** move o cursor da linha de comando com um clique.
 - **Barra de rolagem horizontal** para terminais de tamanho fixo mais largos que a janela; `Shift`+roda rola de lado.
 - **Barras de botões** com nome (menu de contexto do botão ➕) escolhidas por sessão, e **posição inicial** da janela.
-- **Mnemônicos de menu** do SecureCRT: `Alt`+letra abre o menu e as letras sublinhadas escolhem os itens.
+- **Mnemônicos de menu** do SecureCRT: `Alt`+letra abre o menu e as letras sublinhadas escolhem os itens, abrem submenus e marcam opções (menus View, Options, Themes e Window).
 
 ### Transferência de arquivos
 
@@ -382,12 +382,12 @@ Quando a chave de identidade escolhida é recusada pelo servidor, abre a janela 
 
 Estes itens **não estão implementados**:
 
-- Kermit e Zmodem testados em loopback e contra `gkermit`, `sz` e `rz` no WSL; não contra outros servidores (por exemplo C-Kermit).
+- Kermit e Zmodem foram testados em loopback e contra `gkermit`, `sz` e `rz` no WSL, não contra outros servidores (por exemplo C-Kermit).
 - SSH1.
 - TAPI.
 - Scripts em VBScript e Python.
 - Grupos de abas com funcionalidade parcial.
-- Mnemônicos de menu nos submenus e no menu Window.
+- Teclado alternativo "Custom" e TN3270; a lista de sessões do menu Window não tem mnemônico.
 
 Telnet/TLS depende do SChannel do Windows e pode não aceitar todos os certificados de servidores antigos.
 
