@@ -910,34 +910,6 @@ fn palette(theme: &str) -> (bool, Color32, Color32) {
     }
 }
 
-/// Light controls and windows for the dialogs (Windows 11 dialog colours).
-fn dialog_visuals() -> egui::Visuals {
-    let mut v = egui::Visuals::light();
-    let ink = Color32::from_gray(0x1a);
-    let fill = Color32::from_gray(0xf3);
-    v.panel_fill = fill;
-    v.window_fill = fill;
-    v.extreme_bg_color = Color32::WHITE;
-    v.faint_bg_color = Color32::from_gray(0xe8);
-    v.selection.bg_fill = Color32::from_rgb(0x00, 0x63, 0xb1);
-    v.selection.stroke = egui::Stroke::new(1.0, Color32::WHITE);
-    v.window_corner_radius = egui::CornerRadius::same(8);
-    v.menu_corner_radius = egui::CornerRadius::same(6);
-    v.window_stroke = egui::Stroke::new(1.0, Color32::from_gray(0x9a));
-    for w in [&mut v.widgets.noninteractive, &mut v.widgets.inactive, &mut v.widgets.hovered, &mut v.widgets.active] {
-        w.corner_radius = egui::CornerRadius::same(4);
-        w.fg_stroke.color = ink;
-    }
-    v.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, Color32::from_gray(0xcc));
-    v.widgets.inactive.weak_bg_fill = Color32::from_gray(0xfd);
-    v.widgets.inactive.bg_fill = Color32::from_gray(0xfd);
-    v.widgets.inactive.bg_stroke = egui::Stroke::new(1.0, Color32::from_gray(0xd1));
-    v.widgets.hovered.weak_bg_fill = Color32::from_gray(0xf6);
-    v.window_shadow = egui::Shadow::NONE;
-    v.popup_shadow = egui::Shadow::NONE;
-    v
-}
-
 pub fn apply_theme(ctx: &egui::Context, theme: &str) {
     let (dark, panel, _) = palette(theme);
     let mut v = if dark { egui::Visuals::dark() } else { egui::Visuals::light() };
@@ -4760,13 +4732,15 @@ impl YettyApp {
 
     // ----- dialogs ------------------------------------------------------------------------
 
-    /// The original's dialogs are Windows dialogs: light, also beside its dark main window. Everything the
-    /// dialogs draw (windows, controls, pop-ups opened from them) takes the light look; the main window keeps its theme.
+    /// Dialogs follow the theme: on the dark theme their windows use the main window's colour (pop-up menus keep their own grey).
     fn dialogs(&mut self, ctx: &egui::Context) {
-        let dark = palette(&self.settings.theme).0;
+        let (dark, panel, _) = palette(&self.settings.theme);
         let saved = ctx.global_style().visuals.clone();
         if dark {
-            ctx.global_style_mut(|s| s.visuals = dialog_visuals());
+            ctx.global_style_mut(|s| {
+                s.visuals.window_fill = panel;
+                s.visuals.window_stroke = egui::Stroke::new(1.0, Color32::from_gray(70));
+            });
         }
         self.dialogs_inner(ctx);
         if dark {
