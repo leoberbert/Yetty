@@ -27,7 +27,7 @@ Legenda: **Fechado** = implementado e verificado como indicado; **Estimado** = c
 | P-10h | Initial position | Fechado | A janela do Yetty vai para x, y quando a primeira sessão abre |
 | X-01 | SSH1, TAPI | Descartado | Decisão do usuário (Round 35) |
 | X-02 | Open SecureFX | Descartado | Produto separado; cinza também no original |
-| V-01 | Diferenças visuais com o SecureCRT (telas principais) | Fechado | Rodada 38, medidas no SecureCRT 9.7 aberto lado a lado: cor base `1f1f1f`, barra de status `333333`, abas, moldura do terminal, barra de rolagem, ícones, diálogos claros (veja `MECHANICS.md`). **Não igual:** caixas de seleção marcadas (azuis no original, só o "✓" no Yetty), títulos de grupo dentro da borda, ícone da janela, setas de rolagem das abas, alça de redimensionar da barra de status, linhas pontilhadas e quadrados +/− da árvore do Session Manager. Só vi a janela principal, o menu Options, Global Options > General e Quick Connect; as demais janelas de diálogo ganharam o estilo claro mas não foram comparadas uma a uma |
+| V-01 | Diferenças visuais com o SecureCRT (telas principais) | Fechado | Rodada 38, medidas no SecureCRT 9.7 aberto lado a lado: cor base `1f1f1f`, barra de status `333333`, abas, moldura do terminal, barra de rolagem, ícones (veja `MECHANICS.md`). Os diálogos seguem o tema escuro do Yetty por decisão do usuário e não contam como diferença. **Não igual:** caixas de seleção marcadas (azuis no original, só o "✓" no Yetty), títulos de grupo dentro da borda, ícone da janela, setas de rolagem das abas, alça de redimensionar da barra de status, linhas pontilhadas e quadrados +/− da árvore do Session Manager |
 
 ## Teste contra servidores reais no WSL (P-05 / P-06) — concluído
 

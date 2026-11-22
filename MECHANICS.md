@@ -523,9 +523,8 @@ Icons: the toolbar, the Session Manager tool row, the side-panel buttons and the
 fallback font) in white, with the original's order (Connect, Quick Connect, Local Shell, Reconnect, Disconnect | Copy, Paste, Find | Print |
 Session Options, Keymap, Public Key | Help); the first button is Connect (it was the Session Manager toggle). No session prints
 "Connecting to ... " into the terminal any more (the original shows it only in the status bar).
-Dialogs: the original's dialogs are Windows dialogs — light (`f3f3f3`, 8 px corners, `9a9a9a` border) even beside the dark main window. All
-Yetty dialogs now draw with a light style (`dialog_visuals`, switched on only while `dialogs()` runs; a light theme is left as it is); field
-captions are left-aligned.
+Dialogs follow the theme: on the dark theme their windows use the same colour as the main window (`1f1f1f`; pop-up menus keep `2e2e2e`) and
+they are not a difference from the original. Field captions are left-aligned; frame strokes come from the theme.
 Global Options > General: "Session list sort order" is a list with Alphabetically / Logically / Manually (read in the original's window; the
 Round 37 "Sort alphabetically" check box was wrong). Logically compares numbers by value.
 Still different: blue check boxes, group titles drawn inside the border, tab scroll arrows, status bar size grip, the tree's +/- boxes and dotted
