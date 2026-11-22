@@ -173,7 +173,7 @@ fn tree_set_open(list: &mut Vec<String>, path: &str, is_root: bool, open: bool) 
     }
 }
 
-fn build_tree(sessions: &[SessionConfig], folders: &[String], filter: &str, alphabetical: bool) -> Node {
+fn build_tree(sessions: &[SessionConfig], folders: &[String], filter: &str, order: u8) -> Node {
     let mut root = Node { name: "Sessions".into(), path: String::new(), children: Vec::new(), sessions: Vec::new() };
     let f = filter.to_lowercase();
     if f.is_empty() {
@@ -194,25 +194,73 @@ fn build_tree(sessions: &[SessionConfig], folders: &[String], filter: &str, alph
         }
         n.sessions.push(i);
     }
-    if alphabetical {
-        sort_tree(&mut root, sessions);
+    if order != 2 {
+        sort_tree(&mut root, sessions, order == 1);
     }
     root
 }
 
-/// Global Options "Session list sort order: Alphabetically" (the original's default): folders, then sessions,
-/// each by name without regard to case.
-fn sort_tree(n: &mut Node, sessions: &[SessionConfig]) {
-    n.children.sort_by_key(|c| c.name.to_lowercase());
-    n.sessions.sort_by_key(|&i| sessions[i].display_name().to_lowercase());
+/// Natural order: runs of digits compare by value ("host2" before "host10"), the rest without regard to case.
+fn natural_cmp(a: &str, b: &str) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    let (a, b) = (a.to_lowercase(), b.to_lowercase());
+    let (mut ai, mut bi) = (a.chars().peekable(), b.chars().peekable());
+    loop {
+        match (ai.peek().copied(), bi.peek().copied()) {
+            (None, None) => return Ordering::Equal,
+            (None, Some(_)) => return Ordering::Less,
+            (Some(_), None) => return Ordering::Greater,
+            (Some(x), Some(y)) if x.is_ascii_digit() && y.is_ascii_digit() => {
+                let mut na = String::new();
+                let mut nb = String::new();
+                while let Some(c) = ai.next_if(|c| c.is_ascii_digit()) {
+                    na.push(c);
+                }
+                while let Some(c) = bi.next_if(|c| c.is_ascii_digit()) {
+                    nb.push(c);
+                }
+                let (na, nb) = (na.trim_start_matches('0'), nb.trim_start_matches('0'));
+                let o = na.len().cmp(&nb.len()).then_with(|| na.cmp(nb));
+                if o != Ordering::Equal {
+                    return o;
+                }
+            }
+            (Some(x), Some(y)) => {
+                if x != y {
+                    return x.cmp(&y);
+                }
+                ai.next();
+                bi.next();
+            }
+        }
+    }
+}
+
+/// Global Options "Session list sort order": folders, then sessions, each by name (Alphabetically: without
+/// regard to case; Logically: with numbers by value).
+fn sort_tree(n: &mut Node, sessions: &[SessionConfig], natural: bool) {
+    if natural {
+        n.children.sort_by(|a, b| natural_cmp(&a.name, &b.name));
+        n.sessions.sort_by(|&a, &b| natural_cmp(&sessions[a].display_name(), &sessions[b].display_name()));
+    } else {
+        n.children.sort_by_key(|c| c.name.to_lowercase());
+        n.sessions.sort_by_key(|&i| sessions[i].display_name().to_lowercase());
+    }
     for c in &mut n.children {
-        sort_tree(c, sessions);
+        sort_tree(c, sessions, natural);
     }
 }
 
 fn draw_node(ui: &mut egui::Ui, node: &Node, c: &mut TreeCtx, is_root: bool) {
     let id = egui::Id::new(("tree", &node.path));
-    let title = RichText::new(format!("📁 {}", node.name));
+    let title = {
+        let font = egui::TextStyle::Body.resolve(ui.style());
+        let mut job = egui::text::LayoutJob::default();
+        job.append("\u{1F4C1}", 0.0, egui::text::TextFormat { font_id: egui::FontId::new(14.0, egui::FontFamily::Name("symbols".into())), color: Color32::from_rgb(0xff, 0xc8, 0x3d), ..Default::default() });
+        job.append(" ", 0.0, egui::text::TextFormat { font_id: font.clone(), color: Color32::PLACEHOLDER, ..Default::default() });
+        job.append(&node.name, 0.0, egui::text::TextFormat { font_id: font, color: Color32::PLACEHOLDER, ..Default::default() });
+        job
+    };
     let want = if c.filtering {
         true
     } else if is_root {
@@ -234,7 +282,14 @@ fn draw_node(ui: &mut egui::Ui, node: &Node, c: &mut TreeCtx, is_root: bool) {
         for &i in &node.sessions {
             let s = &c.sessions[i];
             let sel = c.selected == Some(i);
-            let r = ui.selectable_label(sel, format!("🖥 {}", s.display_name())).interact(egui::Sense::click_and_drag());
+            let label = {
+                let font = egui::TextStyle::Body.resolve(ui.style());
+                let mut job = egui::text::LayoutJob::default();
+                job.append("\u{E756} ", 0.0, egui::text::TextFormat { font_id: font.clone(), color: Color32::PLACEHOLDER, ..Default::default() });
+                job.append(&s.display_name(), 0.0, egui::text::TextFormat { font_id: font, color: Color32::PLACEHOLDER, ..Default::default() });
+                job
+            };
+            let r = ui.selectable_label(sel, label).interact(egui::Sense::click_and_drag());
             if r.dragged() {
                 egui::DragAndDrop::set_payload(ui.ctx(), DragItem::Session(i));
                 ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
@@ -318,21 +373,21 @@ fn draw_node(ui: &mut egui::Ui, node: &Node, c: &mut TreeCtx, is_root: bool) {
 /// The original's menu icons (the same pictures as its toolbar), by menu item text.
 fn menu_icon(text: &str) -> &'static str {
     match text {
-        "Connect..." => "🔗",
-        "Quick Connect..." => "⚡",
-        "Connect in Tab/Tile..." => "🗔",
-        "Connect Local Shell" => "🖥",
-        "Open Scratchpad" => "📝",
-        "Reconnect" => "⟲",
-        "Disconnect" => "✖",
-        "Copy" => "📋",
-        "Paste" => "📥",
-        "Find..." => "🔍",
-        "Print Screen" | "Print Selection" => "📄",
-        "Session Options..." => "⚙",
-        "Keymap Editor..." => "⌨",
-        "Public-Key Assistant..." => "🔑",
-        "Help Topics" => "?",
+        "Connect..." => "\u{E839}",
+        "Quick Connect..." => "\u{E945}",
+        "Connect in Tab/Tile..." | "Connect In Tab/Tile..." => "\u{E8A7}",
+        "Connect Local Shell" => "\u{E756}",
+        "Open Scratchpad" => "\u{E70B}",
+        "Reconnect" => "\u{E8EE}",
+        "Disconnect" => "\u{E8CD}",
+        "Copy" => "\u{E8C8}",
+        "Paste" => "\u{E77F}",
+        "Find..." => "\u{E721}",
+        "Print Screen" | "Print Selection" => "\u{E749}",
+        "Session Options..." => "\u{E713}",
+        "Keymap Editor..." => "\u{E765}",
+        "Public-Key Assistant..." => "\u{E8D7}",
+        "Help Topics" => "\u{E897}",
         _ => "",
     }
 }
@@ -376,7 +431,7 @@ fn mnemonic_job(ui: &egui::Ui, text: &str, enabled: bool, show: bool) -> (Option
     let rest = text.trim_start_matches(['✓', ' ']);
     let lead = &text[..text.len() - rest.len()];
     let Some((idx, letter)) = crate::mnemonics::lookup(rest) else { return (None, None) };
-    if !show {
+    if !show || !ui.ctx().data(|d| d.get_temp::<bool>(egui::Id::new("mnemonics_visible"))).unwrap_or(false) {
         return (None, Some(letter));
     }
     let color = if enabled { ui.visuals().text_color() } else { ui.visuals().widgets.noninteractive.fg_stroke.color };
@@ -774,6 +829,7 @@ fn session_menu(ui: &mut egui::Ui, c: &mut TreeCtx, i: usize) {
 fn install_fallback_fonts(ctx: &egui::Context) {
     let windir = std::env::var("WINDIR").unwrap_or_else(|_| "C:\\Windows".into());
     let candidates = [
+        ("fb_mdl2", "segmdl2.ttf"),
         ("fb_symbols", "seguisym.ttf"),
         ("fb_cjk_sc", "msyh.ttc"),
         ("fb_cjk_jp", "msgothic.ttc"),
@@ -802,9 +858,10 @@ fn install_fallback_fonts(ctx: &egui::Context) {
             added.push(name.to_string());
         }
     }
-    if added.is_empty() {
-        return;
-    }
+    // a family for the folder picture: Segoe UI Symbol first (a filled folder), then the usual fonts
+    let mut sym: Vec<String> = added.iter().filter(|n| n.as_str() == "fb_symbols").cloned().collect();
+    sym.extend(fonts.families.get(&egui::FontFamily::Proportional).cloned().unwrap_or_default());
+    fonts.families.insert(egui::FontFamily::Name("symbols".into()), sym);
     for fam in [egui::FontFamily::Monospace, egui::FontFamily::Proportional] {
         if let Some(list) = fonts.families.get_mut(&fam) {
             list.extend(added.iter().cloned());
@@ -833,8 +890,14 @@ fn side_tab(ui: &mut egui::Ui, text: &str, selected: bool) -> egui::Response {
 }
 
 fn icon_button(ui: &mut egui::Ui, glyph: &str, tip: &str, enabled: bool) -> bool {
-    let b = egui::Button::new(RichText::new(glyph).size(14.0)).frame(false).min_size(egui::vec2(22.0, 22.0));
+    let color = if ui.visuals().dark_mode { Color32::WHITE } else { Color32::from_gray(30) };
+    let b = egui::Button::new(RichText::new(glyph).size(15.0).color(color)).frame(false).min_size(egui::vec2(24.0, 24.0));
     ui.add_enabled(enabled, b).on_hover_text(tip).clicked()
+}
+
+fn tb_sep(ui: &mut egui::Ui) {
+    let (r, _) = ui.allocate_exact_size(egui::vec2(9.0, 20.0), Sense::hover());
+    ui.painter().vline(r.center().x, r.y_range(), egui::Stroke::new(1.0, Color32::from_gray(0x48)));
 }
 
 fn palette(theme: &str) -> (bool, Color32, Color32) {
@@ -843,8 +906,36 @@ fn palette(theme: &str) -> (bool, Color32, Color32) {
         "Carbon" => (true, Color32::from_rgb(0x1b, 0x1b, 0x1b), Color32::from_rgb(0x16, 0x16, 0x16)),
         "VS Blue" => (true, Color32::from_rgb(0x29, 0x39, 0x55), Color32::from_rgb(0x1f, 0x2b, 0x40)),
         "System" | "Native" | "VS White" | "Office White" => (false, Color32::from_rgb(0xf0, 0xf0, 0xf0), Color32::from_rgb(0xab, 0xab, 0xab)),
-        _ => (true, Color32::from_rgb(0x20, 0x20, 0x20), Color32::from_rgb(0x1e, 0x1e, 0x1e)),
+        _ => (true, Color32::from_rgb(0x1f, 0x1f, 0x1f), Color32::from_rgb(0x1f, 0x1f, 0x1f)),
     }
+}
+
+/// Light controls and windows for the dialogs (Windows 11 dialog colours).
+fn dialog_visuals() -> egui::Visuals {
+    let mut v = egui::Visuals::light();
+    let ink = Color32::from_gray(0x1a);
+    let fill = Color32::from_gray(0xf3);
+    v.panel_fill = fill;
+    v.window_fill = fill;
+    v.extreme_bg_color = Color32::WHITE;
+    v.faint_bg_color = Color32::from_gray(0xe8);
+    v.selection.bg_fill = Color32::from_rgb(0x00, 0x63, 0xb1);
+    v.selection.stroke = egui::Stroke::new(1.0, Color32::WHITE);
+    v.window_corner_radius = egui::CornerRadius::same(8);
+    v.menu_corner_radius = egui::CornerRadius::same(6);
+    v.window_stroke = egui::Stroke::new(1.0, Color32::from_gray(0x9a));
+    for w in [&mut v.widgets.noninteractive, &mut v.widgets.inactive, &mut v.widgets.hovered, &mut v.widgets.active] {
+        w.corner_radius = egui::CornerRadius::same(4);
+        w.fg_stroke.color = ink;
+    }
+    v.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, Color32::from_gray(0xcc));
+    v.widgets.inactive.weak_bg_fill = Color32::from_gray(0xfd);
+    v.widgets.inactive.bg_fill = Color32::from_gray(0xfd);
+    v.widgets.inactive.bg_stroke = egui::Stroke::new(1.0, Color32::from_gray(0xd1));
+    v.widgets.hovered.weak_bg_fill = Color32::from_gray(0xf6);
+    v.window_shadow = egui::Shadow::NONE;
+    v.popup_shadow = egui::Shadow::NONE;
+    v
 }
 
 pub fn apply_theme(ctx: &egui::Context, theme: &str) {
@@ -867,6 +958,14 @@ pub fn apply_theme(ctx: &egui::Context, theme: &str) {
         v.widgets.inactive.bg_fill = Color32::from_rgb(0x2d, 0x2d, 0x2d);
         v.widgets.hovered.weak_bg_fill = Color32::from_rgb(0x3c, 0x3c, 0x3c);
         v.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, Color32::from_gray(70));
+    }
+    if dark {
+        // pop-up menus: the original's grey with a thin lighter border and round corners
+        v.widgets.noninteractive.fg_stroke.color = Color32::from_gray(0xd6);
+        v.widgets.inactive.fg_stroke.color = Color32::from_gray(0xd6);
+        v.window_fill = Color32::from_gray(0x2e);
+        v.window_stroke = egui::Stroke::new(1.0, Color32::from_gray(0x67));
+        v.menu_corner_radius = egui::CornerRadius::same(6);
     }
     v.window_shadow = egui::Shadow::NONE;
     v.popup_shadow = egui::Shadow::NONE;
@@ -2399,8 +2498,17 @@ impl YettyApp {
             const BAR_KEYS: [egui::Key; 9] = [egui::Key::F, egui::Key::E, egui::Key::V, egui::Key::O, egui::Key::T, egui::Key::S, egui::Key::L, egui::Key::W, egui::Key::H];
             ctx.input_mut(|i| BAR_KEYS.iter().position(|k| i.consume_key(egui::Modifiers::ALT, *k)))
         };
-        // the underlined letters show while Alt is down or a menu is open
-        let bar_ul = alt_open.is_some() || ctx.input(|i| i.modifiers.alt) || egui::Popup::is_any_open(&ctx);
+        // the underlined letters show after Alt was pressed (while it is down, or while the menu it opened is open),
+        // not for a menu opened with the pointer
+        let vis_id = egui::Id::new("mnemonics_visible");
+        let mut vis = ctx.data(|d| d.get_temp::<bool>(vis_id)).unwrap_or(false);
+        if alt_open.is_some() || ctx.input(|i| i.modifiers.alt) {
+            vis = true;
+        } else if !egui::Popup::is_any_open(&ctx) {
+            vis = false;
+        }
+        ctx.data_mut(|d| d.insert_temp(vis_id, vis));
+        let bar_ul = vis;
         egui::MenuBar::new().ui(ui, |ui| {
             ui.spacing_mut().button_padding = egui::vec2(6.0, 1.0);
             menus.push(ui.menu_button(bar_title(&ctx, "File", bar_ul), |ui| {
@@ -3045,22 +3153,22 @@ impl YettyApp {
         let ctx = ui.ctx().clone();
         let has = !self.sessions.is_empty();
         ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 3.0;
-            if icon_button(ui, "🗄", "Session Manager (Alt+M)", true) {
-                self.side = if self.side == Some(Side::SessionManager) { None } else { Some(Side::SessionManager) };
-            }
-            if icon_button(ui, "⚡", "Quick Connect (Alt+Q)", true) {
+            ui.spacing_mut().item_spacing.x = 2.0;
+            if icon_button(ui, "\u{E839}", "Connect... (Alt+C)", true) {
                 self.quick_connect();
             }
-            if icon_button(ui, "🖥", "Connect Local Shell (Alt+Shift+L)", true) {
+            if icon_button(ui, "\u{E945}", "Quick Connect (Alt+Q)", true) {
+                self.quick_connect();
+            }
+            if icon_button(ui, "\u{E756}", "Connect Local Shell (Alt+Shift+L)", true) {
                 self.local_shell(&ctx);
             }
-            if icon_button(ui, "⟲", "Reconnect", has) {
+            if icon_button(ui, "\u{E8EE}", "Reconnect", has) {
                 if let Some(s) = self.sessions.get_mut(self.active) {
                     s.connect();
                 }
             }
-            if icon_button(ui, "✖", "Disconnect", has) {
+            if icon_button(ui, "\u{E8CD}", "Disconnect", has) {
                 self.request_disconnect(self.active);
             }
             if self.settings.show_connect_bar {
@@ -3074,19 +3182,19 @@ impl YettyApp {
                     self.connect_from_bar(&ctx);
                 }
             }
-            ui.add_space(6.0);
-            if icon_button(ui, "📋", "Copy", has) {
+            tb_sep(ui);
+            if icon_button(ui, "\u{E8C8}", "Copy", has) {
                 self.copy_selection(&ctx);
             }
-            if icon_button(ui, "📥", "Paste", has) {
+            if icon_button(ui, "\u{E77F}", "Paste", has) {
                 ctx.send_viewport_cmd(egui::ViewportCommand::RequestPaste);
                 self.focus_terminal = true;
             }
-            if icon_button(ui, "🔍", "Find", has) {
+            if icon_button(ui, "\u{E721}", "Find", has) {
                 self.find.open = true;
             }
             let r = ui.add(egui::TextEdit::singleline(&mut self.keyword_bar).id(egui::Id::new("keyword_bar")).hint_text("Keyword <Alt+U>").desired_width(120.0));
-            let go = ui.add_enabled(has, egui::Button::new("🔎").frame(false)).clicked() || (r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)));
+            let go = icon_button(ui, "\u{E721}", "Find keyword", has) || (r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)));
             if go && !self.keyword_bar.trim().is_empty() {
                 let q = self.keyword_bar.clone();
                 if let Some(s) = self.sessions.get_mut(self.active) {
@@ -3094,22 +3202,22 @@ impl YettyApp {
                     self.status_msg = if found { "Ready".into() } else { format!("\"{q}\" not found") };
                 }
             }
-            ui.add_space(6.0);
-            if icon_button(ui, "📄", "Print Screen", has) {
+            tb_sep(ui);
+            if icon_button(ui, "\u{E749}", "Print Screen", has) {
                 self.print_text(false);
             }
-            ui.add_space(6.0);
-            if icon_button(ui, "⚙", "Session Options", has) {
+            tb_sep(ui);
+            if icon_button(ui, "\u{E713}", "Session Options", has) {
                 self.open_options(EditTarget::Active, "connection");
             }
-            if icon_button(ui, "⌨", "Keymap Editor", true) {
+            if icon_button(ui, "\u{E765}", "Keymap Editor", true) {
                 self.keymap_open = true;
             }
-            if icon_button(ui, "🔑", "Public-Key Assistant", true) {
+            if icon_button(ui, "\u{E8D7}", "Public-Key Assistant", true) {
                 self.keyassist_open = true;
             }
-            ui.add_space(6.0);
-            if icon_button(ui, "?", "Help Topics", true) {
+            tb_sep(ui);
+            if icon_button(ui, "\u{E897}", "Help Topics", true) {
                 self.help_open = true;
             }
         });
@@ -3134,14 +3242,25 @@ impl YettyApp {
     }
 
     fn side_header(&mut self, ui: &mut egui::Ui, title: &str) {
+        // the blue line on top of a docked panel in the original
+        let top = ui.max_rect();
+        ui.painter().hline(top.x_range().expand(4.0), top.min.y - 3.0, egui::Stroke::new(2.0, Color32::from_rgb(0x00, 0x78, 0xd4)));
         ui.horizontal(|ui| {
             ui.label(RichText::new(title).size(12.0));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if icon_button(ui, "✖", "Close", true) {
+                if icon_button(ui, "\u{E711}", "Close", true) {
                     self.side = None;
                 }
-                if icon_button(ui, if self.pinned { "📌" } else { "📍" }, "Auto Hide", true) {
+                if icon_button(ui, if self.pinned { "\u{E840}" } else { "\u{E718}" }, "Auto Hide", true) {
                     self.pinned = !self.pinned;
+                }
+                // dotted grip between the title and the buttons
+                let w = ui.available_width().max(0.0);
+                let (r, _) = ui.allocate_exact_size(egui::vec2(w, 12.0), Sense::hover());
+                let mut x = r.min.x + 4.0;
+                while x < r.max.x {
+                    ui.painter().circle_filled(Pos2::new(x, r.center().y), 0.5, Color32::from_gray(110));
+                    x += 3.0;
                 }
             });
         });
@@ -3155,33 +3274,33 @@ impl YettyApp {
         let mut tact: Option<TreeAct> = None;
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 2.0;
-            if icon_button(ui, "🔗", "Connect", sel_ok) {
+            if icon_button(ui, "\u{E71B}", "Connect", sel_ok) {
                 if let Some(i) = self.selected {
                     tact = Some(TreeAct::Connect(i));
                 }
             }
-            if icon_button(ui, "📂", "New Folder", true) {
+            if icon_button(ui, "\u{E8F4}", "New Folder", true) {
                 tact = Some(TreeAct::NewFolder);
             }
-            if icon_button(ui, "➕", "New Session", true) {
+            if icon_button(ui, "\u{E710}", "New Session", true) {
                 self.new_session();
             }
-            if icon_button(ui, "✂", "Cut", sel_ok) {
+            if icon_button(ui, "\u{E8C6}", "Cut", sel_ok) {
                 tact = Some(TreeAct::Cut);
             }
-            if icon_button(ui, "📑", "Copy", sel_ok) {
+            if icon_button(ui, "\u{E8C8}", "Copy", sel_ok) {
                 tact = Some(TreeAct::Copy);
             }
-            if icon_button(ui, "📋", "Paste", self.clip.is_some()) {
+            if icon_button(ui, "\u{E77F}", "Paste", self.clip.is_some()) {
                 tact = Some(TreeAct::Paste);
             }
-            if icon_button(ui, "✖", "Delete", sel_ok) {
+            if icon_button(ui, "\u{E711}", "Delete", sel_ok) {
                 tact = Some(TreeAct::Delete);
             }
-            if icon_button(ui, "⚙", "Properties", sel_ok) {
+            if icon_button(ui, "\u{E713}", "Properties", sel_ok) {
                 tact = Some(TreeAct::Properties);
             }
-            if icon_button(ui, "🔍", "Find", true) {
+            if icon_button(ui, "\u{E721}", "Find", true) {
                 ctx.memory_mut(|m| m.request_focus(egui::Id::new("sm_filter")));
             }
         });
@@ -3192,7 +3311,7 @@ impl YettyApp {
                 .desired_width(f32::INFINITY),
         );
         ui.add_space(2.0);
-        let tree = build_tree(&self.settings.sessions, &self.settings.folders, &self.filter, self.settings.global.sort_alphabetical);
+        let tree = build_tree(&self.settings.sessions, &self.settings.folders, &self.filter, self.settings.global.sort_order);
         let mut tc = TreeCtx {
             sessions: &self.settings.sessions,
             selected: self.selected,
@@ -3649,10 +3768,10 @@ impl YettyApp {
                 ui.spacing_mut().item_spacing.x = 1.0;
                 for (pos, &i) in members.iter().enumerate() {
                     let s = &self.sessions[i];
-                    let dot = match s.status {
-                        Status::Connected => Color32::from_rgb(0x2e, 0xa0, 0x43),
-                        Status::Connecting => Color32::from_rgb(0xe0, 0xa0, 0x00),
-                        Status::Disconnected(_) => Color32::from_rgb(0xc8, 0x32, 0x32),
+                    let (glyph, dot) = match s.status {
+                        Status::Connected => ("\u{2714}", Color32::from_rgb(0x1f, 0xc8, 0x1f)),
+                        Status::Connecting => ("\u{2714}", Color32::from_rgb(0xe0, 0xa0, 0x00)),
+                        Status::Disconnected(_) => ("\u{2716}", Color32::from_rgb(0xe0, 0x3c, 0x3c)),
                     };
                     // in a tab group the shown tab is drawn selected; the blue frame marks the active session
                     let selected = match shown {
@@ -3672,28 +3791,45 @@ impl YettyApp {
                     if resp.drag_stopped() {
                         drop_tab = Some(pos);
                     }
-                    let fill = if selected { ui.visuals().extreme_bg_color } else { ui.visuals().faint_bg_color };
-                    let stroke_col = if selected && focused { Color32::from_rgb(0x00, 0x78, 0xd4) } else { Color32::from_gray(70) };
+                    let fill = if selected { Color32::from_gray(0x3d) } else { Color32::from_gray(0x2e) };
                     ui.painter().rect_filled(rect, 0.0, fill);
-                    ui.painter().rect_stroke(rect, 0.0, egui::Stroke::new(1.0, stroke_col), egui::StrokeKind::Inside);
-                    ui.painter().circle_filled(Pos2::new(rect.min.x + 13.0, rect.center().y), 4.0, dot);
+                    if selected {
+                        let top = if focused { Color32::from_rgb(0x00, 0x78, 0xd4) } else { Color32::from_gray(0x70) };
+                        ui.painter().rect_filled(egui::Rect::from_min_size(rect.min, egui::vec2(rect.width(), 3.0)), 0.0, top);
+                    }
+                    {
+                        // a bold check mark (a cross when disconnected), drawn as lines so it stays heavy at any size
+                        let c = Pos2::new(rect.min.x + 13.0, rect.center().y);
+                        let st = egui::Stroke::new(2.2, dot);
+                        if glyph == "\u{2714}" {
+                            ui.painter().line_segment([Pos2::new(c.x - 5.0, c.y + 0.5), Pos2::new(c.x - 1.5, c.y + 4.0)], st);
+                            ui.painter().line_segment([Pos2::new(c.x - 1.5, c.y + 4.0), Pos2::new(c.x + 5.0, c.y - 4.0)], st);
+                        } else {
+                            ui.painter().line_segment([Pos2::new(c.x - 4.0, c.y - 4.0), Pos2::new(c.x + 4.0, c.y + 4.0)], st);
+                            ui.painter().line_segment([Pos2::new(c.x - 4.0, c.y + 4.0), Pos2::new(c.x + 4.0, c.y - 4.0)], st);
+                        }
+                    }
                     if s.cfg.tab_color_on {
                         let tc = s.cfg.tab_color;
                         ui.painter().rect_filled(egui::Rect::from_min_size(rect.min, egui::vec2(rect.width(), 3.0)), 0.0, Color32::from_rgb(tc[0], tc[1], tc[2]));
                     }
                     ui.painter().galley(Pos2::new(rect.min.x + 22.0, rect.center().y - galley.size().y / 2.0), galley, text_color);
                     // The close button sits on top of the tab and takes its own clicks.
+                    // like the original, only the selected tab (or the one under the pointer) shows its close button
+                    let show_x = selected || ui.rect_contains_pointer(rect);
                     let x_rect = egui::Rect::from_center_size(Pos2::new(rect.max.x - 14.0, rect.center().y), egui::vec2(16.0, 16.0));
-                    let x_resp = ui.interact(x_rect, egui::Id::new(("tab_close", self.sessions[i].id)), Sense::click()).on_hover_text("Close tab");
-                    if x_resp.hovered() {
-                        ui.painter().rect_filled(x_rect, 2.0, Color32::from_rgb(0xc4, 0x2b, 0x1c));
+                    let x_resp = if show_x { Some(ui.interact(x_rect, egui::Id::new(("tab_close", self.sessions[i].id)), Sense::click()).on_hover_text("Close tab")) } else { None };
+                    if let Some(x_resp) = &x_resp {
+                        if x_resp.hovered() {
+                            ui.painter().rect_filled(x_rect, 2.0, Color32::from_rgb(0xc4, 0x2b, 0x1c));
+                        }
+                        let xc = if x_resp.hovered() { Color32::WHITE } else { ui.visuals().text_color() };
+                        let c = x_rect.center();
+                        let d = 3.5;
+                        ui.painter().line_segment([Pos2::new(c.x - d, c.y - d), Pos2::new(c.x + d, c.y + d)], egui::Stroke::new(1.3, xc));
+                        ui.painter().line_segment([Pos2::new(c.x - d, c.y + d), Pos2::new(c.x + d, c.y - d)], egui::Stroke::new(1.3, xc));
                     }
-                    let xc = if x_resp.hovered() { Color32::WHITE } else { ui.visuals().text_color() };
-                    let c = x_rect.center();
-                    let d = 3.5;
-                    ui.painter().line_segment([Pos2::new(c.x - d, c.y - d), Pos2::new(c.x + d, c.y + d)], egui::Stroke::new(1.3, xc));
-                    ui.painter().line_segment([Pos2::new(c.x - d, c.y + d), Pos2::new(c.x + d, c.y - d)], egui::Stroke::new(1.3, xc));
-                    if x_resp.clicked() {
+                    if x_resp.as_ref().map(|r| r.clicked()).unwrap_or(false) {
                         act = Some((i, TabAct::Close));
                     } else if resp.clicked() {
                         select = Some(i);
@@ -3779,11 +3915,11 @@ impl YettyApp {
                         }
                     });
                 }
-                if icon_button(ui, "➕", "Connect in a new tab (Alt+Q)", true) {
-                    self.quick_connect();
-                }
             });
         });
+        // the blue line under the tab bar
+        let bar = ui.max_rect();
+        ui.painter().hline(bar.x_range(), bar.bottom() - 0.5, egui::Stroke::new(1.0, Color32::from_rgb(0x00, 0x78, 0xd4)));
         // Dragging a tab: a blue marker shows where it will land; releasing moves it there.
         let pointer = ui.ctx().input(|i| i.pointer.latest_pos());
         let slot_for = |p: Pos2| -> usize {
@@ -4017,8 +4153,11 @@ impl YettyApp {
         let full = ui.max_rect();
         // the line on top is blue only while the box has the keyboard focus, grey otherwise (as in the original)
         let box_focus = ui.ctx().memory(|m| m.has_focus(egui::Id::new("command_line")));
-        let line = if box_focus { egui::Stroke::new(2.0, focus_blue) } else { egui::Stroke::new(1.0, Color32::from_gray(70)) };
-        ui.painter().hline(full.x_range(), full.min.y + 1.0, line);
+        ui.painter().rect_filled(egui::Rect::from_min_max(Pos2::new(full.min.x - 6.0, full.min.y), Pos2::new(full.max.x + 2.0, full.min.y + 5.0)), 0.0, Color32::from_gray(0x3d));
+        if box_focus {
+            ui.painter().hline(full.x_range(), full.min.y + 1.0, egui::Stroke::new(2.0, focus_blue));
+        }
+        ui.add_space(5.0);
         if self.settings.cmd_title_bar {
             ui.horizontal(|ui| {
                 let title = match self.cmd_target {
@@ -4048,7 +4187,7 @@ impl YettyApp {
         let enter = has_focus && ctx.input_mut(|i| i.consume_key(send_mods, egui::Key::Enter));
         let mut menu_act: Option<&'static str> = None;
         let before = self.command_line.clone();
-        let rect_resp = egui::Frame::new().fill(Color32::from_gray(0x38)).show(ui, |ui| {
+        let rect_resp = egui::Frame::new().fill(Color32::from_gray(0x38)).stroke(egui::Stroke::new(1.0, Color32::from_gray(0x9a))).show(ui, |ui| {
             egui::ScrollArea::vertical().id_salt("cmd_scroll").max_height(84.0).auto_shrink([false, false]).show(ui, |ui| {
                 ui.add(
                     egui::TextEdit::multiline(&mut self.command_line)
@@ -4213,6 +4352,26 @@ impl YettyApp {
         });
     }
 
+    /// The tab group bar under the sessions: the group list as a drop-down, like the original's "Default" button.
+    fn group_bar(&mut self, ui: &mut egui::Ui) {
+        let can_split = self.sessions.len() > 1;
+        ui.horizontal(|ui| {
+            ui.menu_button("Default  \u{E70D}", |ui| {
+                ui.set_min_width(180.0);
+                let _ = ui.radio(true, "Default");
+                ui.separator();
+                if mi(ui, "Send to New Tab Group", "", can_split) {
+                    if let Some(id) = self.sessions.get(self.active).map(|s| s.id) {
+                        self.group_of.insert(id, self.n_groups);
+                        self.n_groups += 1;
+                        self.group_current.push(id);
+                        self.focus_terminal = true;
+                    }
+                }
+            });
+        });
+    }
+
     fn status_bar(&mut self, ui: &mut egui::Ui) {
         let (caps, num) = config::lock_keys();
         ui.horizontal(|ui| {
@@ -4267,11 +4426,11 @@ impl YettyApp {
                             "TFTP Server Status" => (if tftp_on { "TFTP: On" } else { "TFTP: Off" }).to_string(),
                             _ => continue,
                         };
-                        ui.separator();
+                        ui.add_space(14.0);
                         ui.label(RichText::new(text).size(12.0));
                     }
                     if let (true, Some(p)) = (g.status_log_name, &s.log_path) {
-                        ui.separator();
+                        ui.add_space(14.0);
                         let name = std::path::Path::new(p).file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
                         ui.label(RichText::new(if s.log_paused { "Logging paused".to_string() } else { format!("Logging: {name}") }).size(12.0)).on_hover_text(p);
                     }
@@ -4461,6 +4620,12 @@ impl YettyApp {
                 continue; // folded to its title bar
             }
             let resp = term::show(ui, s, &opts, rect);
+            if self.layout == Layout::Tabs {
+                // the original frames the session window: a light line with a darker one inside it
+                let p = ui.painter();
+                p.rect_stroke(rect, 0.0, egui::Stroke::new(1.0, Color32::from_gray(0xa0)), egui::StrokeKind::Inside);
+                p.rect_stroke(rect.shrink(1.0), 0.0, egui::Stroke::new(1.0, Color32::from_gray(0x69)), egui::StrokeKind::Inside);
+            }
             if i == self.active && self.focus_terminal {
                 resp.request_focus();
                 self.focus_terminal = false;
@@ -4595,7 +4760,21 @@ impl YettyApp {
 
     // ----- dialogs ------------------------------------------------------------------------
 
+    /// The original's dialogs are Windows dialogs: light, also beside its dark main window. Everything the
+    /// dialogs draw (windows, controls, pop-ups opened from them) takes the light look; the main window keeps its theme.
     fn dialogs(&mut self, ctx: &egui::Context) {
+        let dark = palette(&self.settings.theme).0;
+        let saved = ctx.global_style().visuals.clone();
+        if dark {
+            ctx.global_style_mut(|s| s.visuals = dialog_visuals());
+        }
+        self.dialogs_inner(ctx);
+        if dark {
+            ctx.global_style_mut(|s| s.visuals = saved);
+        }
+    }
+
+    fn dialogs_inner(&mut self, ctx: &egui::Context) {
         // ESC closes the sub-window that is on top (Quick Connect and Session Options handle their own).
         if self.quick.is_none() && self.options.is_none() && ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
             let closed = if self.prompt.is_some() {
@@ -5114,7 +5293,7 @@ impl YettyApp {
                         ui.add_space(4.0);
                         ui.label("Accept and save the host key, or cancel the connection?");
                         if view {
-                            egui::Frame::new().fill(ui.visuals().extreme_bg_color).stroke(egui::Stroke::new(1.0, Color32::from_gray(90))).inner_margin(4).show(ui, |ui| {
+                            egui::Frame::new().fill(ui.visuals().extreme_bg_color).stroke(egui::Stroke::new(1.0, ui.visuals().widgets.noninteractive.bg_stroke.color)).inner_margin(4).show(ui, |ui| {
                                 ui.set_width(ui.available_width());
                                 ui.label(RichText::new(&detail).monospace().size(11.0));
                             });
@@ -5304,7 +5483,7 @@ impl YettyApp {
                 ui.horizontal_top(|ui| {
                     egui::Frame::new()
                         .fill(ui.visuals().extreme_bg_color)
-                        .stroke(egui::Stroke::new(1.0, Color32::from_gray(90)))
+                        .stroke(egui::Stroke::new(1.0, ui.visuals().widgets.noninteractive.bg_stroke.color))
                         .show(ui, |ui| {
                             egui::ScrollArea::both().id_salt("mp_scroll").max_height(200.0).min_scrolled_height(200.0).show(ui, |ui| {
                                 ui.set_min_size(egui::vec2(470.0, 196.0));
@@ -5934,16 +6113,17 @@ impl eframe::App for YettyApp {
         if self.side == Some(Side::CommandManager) && !self.settings.show_command_manager {
             self.side = None;
         }
-        let (_, panel_fill, central_fill) = palette(&self.settings.theme);
+        let (dark, panel_fill, central_fill) = palette(&self.settings.theme);
+        let status_fill = if dark { Color32::from_gray(0x33) } else { panel_fill };
         let bar_frame = egui::Frame::new().fill(panel_fill).inner_margin(egui::Margin::symmetric(6, 2));
         if self.settings.show_menu_bar {
-            egui::Panel::top("menu").frame(bar_frame).show(ui, |ui| self.menu_bar(ui));
+            egui::Panel::top("menu").frame(bar_frame).show_separator_line(false).show(ui, |ui| self.menu_bar(ui));
         }
         if self.settings.show_toolbar {
-            egui::Panel::top("toolbar").frame(bar_frame).show(ui, |ui| self.toolbar(ui));
+            egui::Panel::top("toolbar").frame(bar_frame).show_separator_line(false).show(ui, |ui| self.toolbar(ui));
         }
         if self.settings.show_status_bar {
-            egui::Panel::bottom("status").frame(bar_frame).show(ui, |ui| self.status_bar(ui));
+            egui::Panel::bottom("status").frame(bar_frame.fill(status_fill)).show_separator_line(false).show(ui, |ui| self.status_bar(ui));
         }
         if self.settings.show_button_bar {
             // Global Options > Terminal > Appearance > "Show button bar on: bottom / top"
@@ -5951,14 +6131,21 @@ impl eframe::App for YettyApp {
             panel.frame(bar_frame).show(ui, |ui| self.button_bar(ui));
         }
         if self.settings.show_command_window {
-            egui::Panel::bottom("command").frame(bar_frame.inner_margin(egui::Margin { left: 6, right: 2, top: 0, bottom: 2 })).show(ui, |ui| self.command_window(ui));
+            egui::Panel::bottom("command").frame(bar_frame.inner_margin(egui::Margin { left: 6, right: 2, top: 0, bottom: 2 })).show_separator_line(false).show(ui, |ui| self.command_window(ui));
         }
         if self.settings.show_hex_view {
             egui::Panel::bottom("hex").frame(bar_frame.inner_margin(6)).show(ui, |ui| self.hex_view(ui));
         }
+        if self.settings.show_tabs && self.layout == Layout::Tabs && self.n_groups <= 1 {
+            egui::Panel::bottom("groupbar")
+                .frame(egui::Frame::new().fill(panel_fill).inner_margin(egui::Margin { left: 12, right: 4, top: 4, bottom: 4 }))
+                .show_separator_line(false)
+                .show(ui, |ui| self.group_bar(ui));
+        }
         egui::Panel::left("stripe")
             .exact_size(20.0)
             .resizable(false)
+            .show_separator_line(false)
             .frame(egui::Frame::new().fill(panel_fill).inner_margin(egui::Margin::symmetric(1, 0)))
             .show(ui, |ui| self.side_stripe(ui));
         // Auto Hide: while the panel is not pinned it floats over the session and goes away
@@ -6026,7 +6213,7 @@ impl eframe::App for YettyApp {
         if tabs_wanted && !grouped {
             let frame = egui::Frame::new().fill(panel_fill).inner_margin(egui::Margin { left: 2, right: 2, top: 3, bottom: if tab_bottom { 3 } else { 0 } });
             let panel = if tab_bottom { egui::Panel::bottom("tabs") } else { egui::Panel::top("tabs") };
-            panel.frame(frame).show(ui, |ui| self.tabs(ui, None));
+            panel.frame(frame).show_separator_line(false).show(ui, |ui| self.tabs(ui, None));
         }
         egui::CentralPanel::default().frame(egui::Frame::new().fill(central_fill)).show(ui, |ui| {
             if grouped {
@@ -6048,5 +6235,17 @@ impl eframe::App for YettyApp {
         if self.screenshot.is_none() && self.settings.auto_save {
             self.settings.save();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::natural_cmp;
+
+    #[test]
+    fn logical_order_compares_numbers_by_value() {
+        let mut names = vec!["host10", "Host2", "host02b", "host1", "alpha", "host2"];
+        names.sort_by(|a, b| natural_cmp(a, b));
+        assert_eq!(names, ["alpha", "host1", "Host2", "host2", "host02b", "host10"]);
     }
 }

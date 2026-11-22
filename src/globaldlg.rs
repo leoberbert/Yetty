@@ -21,8 +21,8 @@ pub struct GlobalOpts {
     pub new_session_wizard: bool,
     /// "Save expanded folder state for session list"
     pub save_tree_state: bool,
-    /// "Session list sort order": alphabetically (the original's "Sort Alphabetical"=1) or as arranged
-    pub sort_alphabetical: bool,
+    /// "Session list sort order": 0 Alphabetically, 1 Logically (numbers by value), 2 Manually (as arranged)
+    pub sort_order: u8,
     /// "Recently used session list:" (1-16)
     pub recent_list_size: u32,
     /// Auto Session: 0 do not connect, 1 local shell, 2 sessions from last use, 3 snapshot, 4 auto session
@@ -79,7 +79,7 @@ impl Default for GlobalOpts {
             show_sm_on_startup: false,
             new_session_wizard: true,
             save_tree_state: true,
-            sort_alphabetical: true,
+            sort_order: 0,
             recent_list_size: 4,
             auto_session: 0,
             auto_snapshot: String::new(),
@@ -307,7 +307,7 @@ pub fn window(ctx: &egui::Context, st: &mut Settings, gs: &mut GlobalState) -> G
 
 /// The category tree: indented, with expand/collapse arrows on the nodes that have children.
 fn tree(ui: &mut egui::Ui, gs: &mut GlobalState) {
-    egui::Frame::new().stroke(Stroke::new(1.0, Color32::from_gray(90))).fill(ui.visuals().extreme_bg_color).inner_margin(4).show(ui, |ui| {
+    egui::Frame::new().stroke(Stroke::new(1.0, ui.visuals().widgets.noninteractive.bg_stroke.color)).fill(ui.visuals().extreme_bg_color).inner_margin(4).show(ui, |ui| {
         ui.set_min_size(egui::vec2(142.0, 474.0));
         ui.set_max_width(142.0);
         ui.spacing_mut().item_spacing.y = 0.0;
@@ -510,7 +510,15 @@ fn page(ui: &mut egui::Ui, st: &mut Settings, gs: &mut GlobalState, out: &mut Gl
                 let g = &mut st.global;
                 off_check(ui, true, "Use dockable Session Manager");
                 ui.checkbox(&mut g.show_sm_on_startup, "Show Session Manager or Connect dialog on startup");
-                ui.checkbox(&mut g.sort_alphabetical, "Sort alphabetically");
+                ui.horizontal(|ui| {
+                    ui.label("Session list sort order:");
+                    let names = ["Alphabetically", "Logically", "Manually"];
+                    egui::ComboBox::from_id_salt("sort_order").selected_text(names[g.sort_order.min(2) as usize]).show_ui(ui, |ui| {
+                        for (i, n) in names.iter().enumerate() {
+                            ui.selectable_value(&mut g.sort_order, i as u8, *n);
+                        }
+                    });
+                });
                 ui.checkbox(&mut g.save_tree_state, "Save expanded folder state for session list");
                 off_check(ui, true, "When a session is renamed/moved, update sessions that use it as a firewall");
                 ui.checkbox(&mut g.new_session_wizard, "New session uses wizard");

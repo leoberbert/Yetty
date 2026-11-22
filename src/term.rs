@@ -355,8 +355,7 @@ impl Session {
         if let Some(c) = self.conn.take() {
             c.close();
         }
-        let msg = format!("\x1b[0mConnecting to {} ...\r\n", self.cfg.summary());
-        self.parser.process(msg.as_bytes());
+        self.parser.process(b"\x1b[0m");
         self.apply_modes();
         self.logon_idx = 0;
         self.logon_buf.clear();
@@ -1444,7 +1443,7 @@ fn url_at(line: &[char], col: usize) -> Option<String> {
     Some(url)
 }
 
-const SCROLLBAR_W: f32 = 14.0;
+const SCROLLBAR_W: f32 = 17.0;
 
 /// Draw the session's screen in `rect`, handle its keyboard and mouse input.
 pub fn show(ui: &mut egui::Ui, s: &mut Session, opts: &ViewOptions, rect: Rect) -> egui::Response {
@@ -1996,21 +1995,36 @@ pub fn show(ui: &mut egui::Ui, s: &mut Session, opts: &ViewOptions, rect: Rect) 
         }
         return resp;
     }
-    let track = Rect::from_min_max(Pos2::new(rect.max.x - SCROLLBAR_W, rect.min.y), rect.max);
-    let sb_resp = ui.interact(track, id.with("scrollbar"), Sense::click_and_drag());
+    let full_track = Rect::from_min_max(Pos2::new(rect.max.x - SCROLLBAR_W, rect.min.y), rect.max);
+    let sb_resp = ui.interact(full_track, id.with("scrollbar"), Sense::click_and_drag());
     let dark_bg = (bg_def[0] as u32 + bg_def[1] as u32 + bg_def[2] as u32) < 384;
     let track_col = if dark_bg { Color32::from_gray(45) } else { Color32::from_gray(230) };
-    let thumb_col = if dark_bg { Color32::from_gray(110) } else { Color32::from_gray(160) };
-    painter.rect_filled(track, 0.0, track_col);
+    let thumb_col = if dark_bg { Color32::from_gray(78) } else { Color32::from_gray(160) };
+    let arrow_col = if dark_bg { Color32::from_gray(120) } else { Color32::from_gray(100) };
+    painter.rect_filled(full_track, 0.0, track_col);
+    // arrow buttons at both ends, as the original's scroll bar; the thumb runs between them
+    let arrow_h = SCROLLBAR_W;
+    let track = Rect::from_min_max(
+        Pos2::new(full_track.min.x, full_track.min.y + arrow_h),
+        Pos2::new(full_track.max.x, (full_track.max.y - arrow_h).max(full_track.min.y + arrow_h)),
+    );
+    let cx = full_track.center().x;
+    let (up_y, down_y) = (full_track.min.y + arrow_h / 2.0, full_track.max.y - arrow_h / 2.0);
+    painter.add(egui::Shape::convex_polygon(vec![Pos2::new(cx - 4.0, up_y + 2.0), Pos2::new(cx + 4.0, up_y + 2.0), Pos2::new(cx, up_y - 2.0)], arrow_col, egui::Stroke::NONE));
+    painter.add(egui::Shape::convex_polygon(vec![Pos2::new(cx - 4.0, down_y - 2.0), Pos2::new(cx + 4.0, down_y - 2.0), Pos2::new(cx, down_y + 2.0)], arrow_col, egui::Stroke::NONE));
     let total = (sb_len + rows as usize) as f32;
     let thumb_h = (track.height() * rows as f32 / total).max(20.0).min(track.height());
     let movable = track.height() - thumb_h;
     let frac_from_bottom = if sb_len == 0 { 0.0 } else { s.scroll_offset as f32 / sb_len as f32 };
     let thumb_top = track.min.y + movable * (1.0 - frac_from_bottom);
-    let thumb = Rect::from_min_size(Pos2::new(track.min.x + 3.0, thumb_top), Vec2::new(SCROLLBAR_W - 6.0, thumb_h));
-    painter.rect_filled(thumb, 4.0, thumb_col);
-    if (sb_resp.dragged() || sb_resp.clicked()) && sb_len > 0 && movable > 0.0 {
-        if let Some(p) = sb_resp.interact_pointer_pos() {
+    let thumb = Rect::from_min_size(Pos2::new(track.min.x + 4.0, thumb_top), Vec2::new(SCROLLBAR_W - 8.0, thumb_h));
+    painter.rect_filled(thumb, 0.0, thumb_col);
+    if let Some(p) = sb_resp.interact_pointer_pos() {
+        if sb_resp.clicked() && p.y < track.min.y {
+            s.scroll_to(s.scroll_offset.saturating_add(3));
+        } else if sb_resp.clicked() && p.y >= track.max.y {
+            s.scroll_to(s.scroll_offset.saturating_sub(3));
+        } else if (sb_resp.dragged() || sb_resp.clicked()) && sb_len > 0 && movable > 0.0 {
             let f = ((p.y - track.min.y - thumb_h / 2.0) / movable).clamp(0.0, 1.0);
             let new = ((1.0 - f) * sb_len as f32).round() as usize;
             s.scroll_to(new);

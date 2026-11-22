@@ -11,7 +11,7 @@ pub fn group<R>(ui: &mut egui::Ui, title: &str, add: impl FnOnce(&mut egui::Ui) 
     ui.add_space(2.0);
     ui.label(RichText::new(title).size(12.0));
     egui::Frame::new()
-        .stroke(egui::Stroke::new(1.0, Color32::from_gray(80)))
+        .stroke(egui::Stroke::new(1.0, ui.visuals().widgets.noninteractive.bg_stroke.color))
         .inner_margin(6)
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
@@ -32,7 +32,7 @@ pub fn dialog<R>(ctx: &egui::Context, id: &str, title: &str, inner_width: f32, o
     if id != "session_options" && id != "quick_connect" && id != "global_options" {
         raise(ctx, id);
     }
-    let frame = egui::Frame::window(&ctx.global_style()).inner_margin(0).corner_radius(2);
+    let frame = egui::Frame::window(&ctx.global_style()).inner_margin(0).corner_radius(8);
     let total = inner_width + 20.0;
     let mut close = false;
     let res = egui::Window::new(id)
@@ -72,6 +72,13 @@ pub fn dialog<R>(ctx: &egui::Context, id: &str, title: &str, inner_width: f32, o
     res.and_then(|r| r.inner)
 }
 
+/// A field caption in a 62-point column, left-aligned as in the original's dialogs.
+fn field_label(ui: &mut egui::Ui, text: &str) {
+    ui.allocate_ui_with_layout(egui::vec2(62.0, 20.0), egui::Layout::left_to_right(egui::Align::Center), |ui| {
+        ui.label(text);
+    });
+}
+
 fn heading(ui: &mut egui::Ui, text: &str) {
     // The title bar of a page follows the theme (light on a light theme, dark on a dark one).
     let (fill, ink) = if ui.visuals().dark_mode { (Color32::from_rgb(0x38, 0x3b, 0x40), Color32::from_gray(235)) } else { (HEAD_FILL, Color32::from_rgb(0x20, 0x20, 0x20)) };
@@ -88,11 +95,11 @@ fn auth_list(ui: &mut egui::Ui, cfg: &mut SessionConfig, sel: &mut usize, gear: 
     if *sel >= cfg.auth.len() {
         *sel = 0;
     }
-    egui::Frame::new().stroke(egui::Stroke::new(1.0, Color32::from_gray(80))).inner_margin(6).show(ui, |ui| {
+    egui::Frame::new().stroke(egui::Stroke::new(1.0, ui.visuals().widgets.noninteractive.bg_stroke.color)).inner_margin(6).show(ui, |ui| {
         ui.horizontal(|ui| {
             egui::Frame::new()
                 .fill(ui.visuals().extreme_bg_color)
-                .stroke(egui::Stroke::new(1.0, Color32::from_gray(90)))
+                .stroke(egui::Stroke::new(1.0, ui.visuals().widgets.noninteractive.bg_stroke.color))
                 .inner_margin(3)
                 .show(ui, |ui| {
                     ui.set_min_size(egui::vec2(172.0, 82.0));
@@ -159,7 +166,7 @@ fn alg_editor(ui: &mut egui::Ui, title: &str, list: &mut Vec<AuthMethod>, sel: &
             *sel = 0;
         }
         ui.horizontal(|ui| {
-            egui::Frame::new().fill(ui.visuals().extreme_bg_color).stroke(egui::Stroke::new(1.0, Color32::from_gray(90))).inner_margin(3).show(ui, |ui| {
+            egui::Frame::new().fill(ui.visuals().extreme_bg_color).stroke(egui::Stroke::new(1.0, ui.visuals().widgets.noninteractive.bg_stroke.color)).inner_margin(3).show(ui, |ui| {
                 ui.set_min_width(200.0);
                 ui.set_max_width(200.0);
                 egui::ScrollArea::vertical().id_salt(("alg", title)).max_height(104.0).auto_shrink([false, true]).show(ui, |ui| {
@@ -278,7 +285,7 @@ fn auth_props_window_old(ctx: &egui::Context, cfg: &mut SessionConfig, open: &mu
 pub fn connection_form(ui: &mut egui::Ui, cfg: &mut SessionConfig, st: &Settings, salt: &str, sel_auth: &mut usize) -> Option<String> {
     let mut gear: Option<String> = None;
     ui.horizontal(|ui| {
-        ui.add_sized([62.0, 20.0], egui::Label::new("Protocol:"));
+        field_label(ui, "Protocol:");
         let shown = if cfg.protocol == Protocol::Sftp { Protocol::Ssh } else { cfg.protocol };
         let mut pick = shown;
         egui::ComboBox::from_id_salt((salt, "proto")).width(112.0).selected_text(pick.label()).show_ui(ui, |ui| {
@@ -370,18 +377,18 @@ pub fn connection_form(ui: &mut egui::Ui, cfg: &mut SessionConfig, st: &Settings
         }
         Protocol::LocalShell => {
             ui.horizontal(|ui| {
-                ui.add_sized([62.0, 20.0], egui::Label::new("Command:"));
+                field_label(ui, "Command:");
                 ui.add(egui::TextEdit::singleline(&mut cfg.shell_command).desired_width(f32::INFINITY).hint_text("cmd.exe (default)"));
             });
         }
         _ => {
             ui.horizontal(|ui| {
-                ui.add_sized([62.0, 20.0], egui::Label::new("Hostname:"));
+                field_label(ui, "Hostname:");
                 let r = ui.add(egui::TextEdit::singleline(&mut cfg.host).id(egui::Id::new((salt, "host"))).desired_width(f32::INFINITY));
                 let _ = r;
             });
             ui.horizontal(|ui| {
-                ui.add_sized([62.0, 20.0], egui::Label::new("Port:"));
+                field_label(ui, "Port:");
                 ui.add(egui::DragValue::new(&mut cfg.port).range(1..=65535));
                 ui.add_space(20.0);
                 ui.label("Firewall:");
@@ -627,7 +634,7 @@ pub fn options_window(ctx: &egui::Context, d: &mut OptionsDlg, st: &mut Settings
             }
             ui.horizontal_top(|ui| {
                 egui::Frame::new()
-                    .stroke(egui::Stroke::new(1.0, Color32::from_gray(90)))
+                    .stroke(egui::Stroke::new(1.0, ui.visuals().widgets.noninteractive.bg_stroke.color))
                     .fill(ui.visuals().extreme_bg_color)
                     .inner_margin(4)
                     .show(ui, |ui| {
@@ -914,7 +921,7 @@ fn page_body(ui: &mut egui::Ui, page: &str, d: &mut OptionsDlg, st: &mut Setting
                 ui.add_enabled(d.cfg.automate_logon, egui::Checkbox::new(&mut d.cfg.send_initial_cr, "Send initial carriage return"));
             });
             ui.horizontal(|ui| {
-                egui::Frame::new().stroke(egui::Stroke::new(1.0, Color32::from_gray(90))).fill(ui.visuals().extreme_bg_color).show(ui, |ui| {
+                egui::Frame::new().stroke(egui::Stroke::new(1.0, ui.visuals().widgets.noninteractive.bg_stroke.color)).fill(ui.visuals().extreme_bg_color).show(ui, |ui| {
                     ui.set_min_size(egui::vec2(290.0, 176.0));
                     ui.set_max_width(290.0);
                     ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
@@ -1088,7 +1095,7 @@ fn page_body(ui: &mut egui::Ui, page: &str, d: &mut OptionsDlg, st: &mut Setting
         }
         "fwd" => {
             ui.label("Forwarded ports:");
-            egui::Frame::new().stroke(egui::Stroke::new(1.0, Color32::from_gray(90))).fill(ui.visuals().extreme_bg_color).show(ui, |ui| {
+            egui::Frame::new().stroke(egui::Stroke::new(1.0, ui.visuals().widgets.noninteractive.bg_stroke.color)).fill(ui.visuals().extreme_bg_color).show(ui, |ui| {
                 ui.set_min_size(egui::vec2(330.0, 160.0));
                 egui::Grid::new("fwds").num_columns(3).min_col_width(60.0).spacing([10.0, 3.0]).show(ui, |ui| {
                     for h in ["Name", "Type", "Forward"] {
@@ -1313,7 +1320,7 @@ fn page_body(ui: &mut egui::Ui, page: &str, d: &mut OptionsDlg, st: &mut Setting
         }
         "mapped" => {
             group(ui, "Mapped keys", |ui| {
-                egui::Frame::new().stroke(egui::Stroke::new(1.0, Color32::from_gray(90))).fill(ui.visuals().extreme_bg_color).show(ui, |ui| {
+                egui::Frame::new().stroke(egui::Stroke::new(1.0, ui.visuals().widgets.noninteractive.bg_stroke.color)).fill(ui.visuals().extreme_bg_color).show(ui, |ui| {
                     ui.set_min_size(egui::vec2(310.0, 120.0));
                     egui::Grid::new("map_grid").num_columns(3).min_col_width(90.0).spacing([8.0, 3.0]).show(ui, |ui| {
                         for h in ["Key Combination", "Function", "Argument"] {

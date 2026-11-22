@@ -60,7 +60,7 @@ pub fn window(ctx: &egui::Context, st: &mut Settings, s: &mut KeymapState) -> bo
             ui.checkbox(&mut s.alt, "Alt");
             ui.checkbox(&mut s.shift, "Shift");
         });
-        egui::Frame::new().stroke(egui::Stroke::new(1.0, Color32::from_gray(90))).fill(ui.visuals().extreme_bg_color).inner_margin(8).show(ui, |ui| {
+        egui::Frame::new().stroke(egui::Stroke::new(1.0, ui.visuals().widgets.noninteractive.bg_stroke.color)).fill(ui.visuals().extreme_bg_color).inner_margin(8).show(ui, |ui| {
             ui.spacing_mut().item_spacing = egui::vec2(3.0, 3.0);
             for row in ROWS {
                 ui.horizontal(|ui| {
