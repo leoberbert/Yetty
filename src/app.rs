@@ -387,7 +387,6 @@ fn menu_icon(text: &str) -> &'static str {
         "Session Options..." => "\u{E713}",
         "Keymap Editor..." => "\u{E765}",
         "Public-Key Assistant..." => "\u{E8D7}",
-        "Help Topics" => "\u{E897}",
         _ => "",
     }
 }
@@ -1008,7 +1007,6 @@ pub struct YettyApp {
     keyassist_open: bool,
     snapshots_open: bool,
     scratch: Option<String>,
-    help_open: bool,
     about_open: bool,
     find: FindState,
     button_editor: Option<ButtonEditor>,
@@ -1309,7 +1307,6 @@ impl YettyApp {
             keyassist_open: false,
             snapshots_open: false,
             scratch: None,
-            help_open: false,
             about_open: false,
             find: FindState::default(),
             button_editor: None,
@@ -3085,10 +3082,6 @@ impl YettyApp {
             }).response);
             menus.push(ui.menu_button(bar_title(&ctx, "Help", bar_ul), |ui| {
                 ui.set_min_width(200.0);
-                if mi_plain(ui, "Help Topics", true) {
-                    self.help_open = true;
-                }
-                ui.separator();
                 if mi_plain(ui, "About Yetty...", true) {
                     self.about_open = true;
                 }
@@ -3189,8 +3182,8 @@ impl YettyApp {
                 self.keyassist_open = true;
             }
             tb_sep(ui);
-            if icon_button(ui, "\u{E897}", "Help Topics", true) {
-                self.help_open = true;
+            if icon_button(ui, "\u{E897}", "About Yetty", true) {
+                self.about_open = true;
             }
         });
     }
@@ -4784,9 +4777,6 @@ impl YettyApp {
                 self.creds_open = false;
                 self.dirty = true;
                 true
-            } else if self.help_open {
-                self.help_open = false;
-                true
             } else if self.about_open {
                 self.about_open = false;
                 true
@@ -5544,60 +5534,25 @@ impl YettyApp {
             }
         }
 
-        if self.help_open {
-            dialogs::dialog(ctx, "help_win", "Yetty Help", 520.0, &mut self.help_open, true, |ui| {
-                ui.add_space(4.0);
-                ui.label(RichText::new("Yetty").strong().size(20.0));
-                ui.label("A tabbed terminal client for Windows: SSH2, SFTP, Telnet, RLogin, Serial and Local Shell.");
-                ui.add_space(8.0);
-                let section = |ui: &mut egui::Ui, title: &str, rows: &[(&str, &str)]| {
-                    ui.separator();
-                    ui.label(RichText::new(title).strong().size(13.0));
-                    egui::Grid::new(title).num_columns(2).spacing([16.0, 4.0]).show(ui, |ui| {
-                        for (k, v) in rows {
-                            ui.label(RichText::new(*k).strong());
-                            ui.label(*v);
-                            ui.end_row();
-                        }
-                    });
-                    ui.add_space(4.0);
-                };
-                section(ui, "Connecting", &[
-                    ("Alt+Q", "Quick Connect"),
-                    ("Alt+Shift+L", "Open a local shell"),
-                    ("Alt+M", "Session Manager: double-click a saved session to connect"),
-                    ("Alt+B", "Connect in a new tab"),
-                ]);
-                section(ui, "Working with sessions", &[
-                    ("Alt+G", "Command Window: send a line to the active, visible or all sessions"),
-                    ("Ctrl+Tab", "Next tab (Ctrl+Shift+Tab: previous)"),
-                    ("Alt+Enter", "Full screen"),
-                    ("Ctrl+= / Ctrl+-", "Zoom in / out (Ctrl+0 resets)"),
-                    ("Ctrl+Ins / Shift+Ins", "Copy / paste"),
-                ]);
-                section(ui, "Configuration", &[
-                    ("Session Options", "Logon actions, SSH, port forwarding, terminal, appearance, keyword highlighting, logging"),
-                    ("Global Options", "Menus, tabs, colours, status bar, printing and defaults for every session"),
-                    ("Keymap Editor", "Map keys to text, copy, paste and other functions"),
-                ]);
-                section(ui, "Files and automation", &[
-                    ("Transfer", "Xmodem, Ymodem, Zmodem and Kermit; drop files on an SFTP tab to upload"),
-                    ("Scripts", "Text files with send, sendln, waitfor, sleep and # comments"),
-                    ("Button Bar", "Buttons that send saved text"),
-                ]);
-                ui.separator();
-                ui.horizontal(|ui| {
-                    ui.label("Source code and issues:");
-                    ui.hyperlink_to("github.com/leoberbert/Yetty", "https://github.com/leoberbert/Yetty");
-                });
-                ui.add_space(2.0);
-            });
-        }
         if self.about_open {
-            dialogs::dialog(ctx, "about_win", "About Yetty", 340.0, &mut self.about_open, true, |ui| {
-                ui.label(RichText::new("Yetty 0.2").strong().size(16.0));
-                ui.label("Tabbed terminal client: SSH2, SFTP, Telnet, RLogin, Raw, Serial and Local Shell.");
-                ui.weak("SSH uses the OpenSSH client that comes with Windows.");
+            dialogs::dialog(ctx, "about_win", "About Yetty", 400.0, &mut self.about_open, true, |ui| {
+                ui.add_space(6.0);
+                ui.label(RichText::new("Yetty").strong().size(24.0));
+                ui.label(format!("Version {}", env!("CARGO_PKG_VERSION")));
+                ui.add_space(8.0);
+                ui.label("A tabbed terminal client for Windows with SSH2, SFTP, Telnet, RLogin, serial and local shell sessions, file transfers, tab groups and scripting.");
+                ui.add_space(6.0);
+                ui.weak("SSH connections use the OpenSSH client that ships with Windows.");
+                ui.add_space(10.0);
+                ui.separator();
+                ui.add_space(4.0);
+                ui.label(RichText::new("License").strong());
+                ui.label("Released under the MIT License.");
+                ui.label("Copyright \u{00A9} 2026 Leonardo Berbert");
+                ui.add_space(8.0);
+                ui.label(RichText::new("Source code and issue tracker").strong());
+                ui.hyperlink_to("github.com/leoberbert/Yetty", "https://github.com/leoberbert/Yetty");
+                ui.add_space(4.0);
             });
         }
     }
@@ -5966,7 +5921,6 @@ impl YettyApp {
             || self.snapshots_open
             || self.trace_open
             || self.creds_open
-            || self.help_open
             || self.about_open
             || self.tftp_open
             || self.error_msg.is_some()
