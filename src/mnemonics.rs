@@ -199,4 +199,24 @@ mod tests {
         assert_eq!(lookup("About Yetty..."), Some((0, 'a')));
         assert_eq!(lookup("No such item"), None);
     }
+
+    #[test]
+    fn submenus_and_window_menu_have_mnemonics() {
+        for (caption, letter) in [
+            ("Themes", 'e'),
+            ("Zoom", 'z'),
+            ("Configure", 'c'),
+            ("Print", 'p'),
+            ("Open Snapshot", 'o'),
+            ("Save Snapshot", 'v'),
+            ("Tabs", 't'),
+            ("Tile Vertically", 'v'),
+            ("Tile Horizontally", 'h'),
+            ("Cascade", 'c'),
+            ("Single Tab Group", 's'),
+            ("Window Transparency", 'w'),
+        ] {
+            assert_eq!(lookup(caption).map(|m| m.1), Some(letter), "{caption}");
+        }
+    }
 }

@@ -362,19 +362,9 @@ fn mi_with_icon(ui: &mut egui::Ui, icon: &str, text: &str, sc: &str, enabled: bo
     // typing the underlined letter while the menu is open chooses the item
     if enabled && !hit {
         if let Some(letter) = mnemonic {
-            if let Some(key) = egui::Key::from_name(&letter.to_ascii_uppercase().to_string()) {
-                let letter_s = letter.to_string();
-                let pressed = ui.input_mut(|i| {
-                    let p = i.consume_key(egui::Modifiers::NONE, key);
-                    if p {
-                        i.events.retain(|e| !matches!(e, egui::Event::Text(t) if t.eq_ignore_ascii_case(&letter_s)));
-                    }
-                    p
-                });
-                if pressed {
-                    ui.close();
-                    hit = true;
-                }
+            if mnemonic_pressed(ui, letter) {
+                ui.close();
+                hit = true;
             }
         }
     }
@@ -425,8 +415,79 @@ fn bar_title(ctx: &egui::Context, text: &str, show: bool) -> egui::WidgetText {
 /// A submenu inside a menu, with the same empty icon column as the items so its text lines up with theirs.
 fn sub_menu(ui: &mut egui::Ui, text: &str, add: impl FnOnce(&mut egui::Ui)) {
     use egui::AtomExt;
+    use egui::containers::menu::{MenuState, SubMenu};
     let icon = RichText::new("").size(12.5).atom_size(egui::vec2(18.0, 14.0));
-    ui.menu_button((icon, text), add);
+    let (job, mnemonic) = mnemonic_job(ui, text, true, true);
+    let label: egui::WidgetText = match job {
+        Some(job) => job.into(),
+        None => text.into(),
+    };
+    let r = ui.menu_button((icon, label), add);
+    // typing the underlined letter opens the submenu
+    if let Some(letter) = mnemonic {
+        if mnemonic_pressed(ui, letter) {
+            let id = SubMenu::id_from_widget_id(r.response.id);
+            MenuState::mark_shown(ui.ctx(), id);
+            MenuState::from_ui(ui, |state, _| state.open_item = Some(id));
+            ui.request_repaint();
+        }
+    }
+}
+
+/// True when the mnemonic letter was typed for this menu: not while one of its submenus is open (the letter then
+/// belongs to the submenu). The key press is consumed.
+fn mnemonic_pressed(ui: &egui::Ui, letter: char) -> bool {
+    if egui::containers::menu::MenuState::from_ui(ui, |state, _| state.open_item.is_some()) {
+        return false;
+    }
+    let Some(key) = egui::Key::from_name(&letter.to_ascii_uppercase().to_string()).or_else(|| egui::Key::from_name(&letter.to_string())) else { return false };
+    let letter_s = letter.to_string();
+    ui.input_mut(|i| {
+        let p = i.consume_key(egui::Modifiers::NONE, key);
+        if p {
+            i.events.retain(|e| !matches!(e, egui::Event::Text(t) if t.eq_ignore_ascii_case(&letter_s)));
+        }
+        p
+    })
+}
+
+/// A checkbox menu item with its mnemonic; the letter toggles it like a click. True when it changed.
+fn mcheck(ui: &mut egui::Ui, value: &mut bool, text: &str, enabled: bool) -> bool {
+    let (job, mnemonic) = mnemonic_job(ui, text, enabled, true);
+    let label: egui::WidgetText = match job {
+        Some(job) => job.into(),
+        None => text.into(),
+    };
+    let mut hit = ui.add_enabled(enabled, egui::Checkbox::new(value, label)).clicked();
+    if enabled && !hit {
+        if let Some(letter) = mnemonic {
+            if mnemonic_pressed(ui, letter) {
+                *value = !*value;
+                ui.close();
+                hit = true;
+            }
+        }
+    }
+    hit
+}
+
+/// A radio menu item with its mnemonic; true when chosen (by click or by the letter).
+fn mradio(ui: &mut egui::Ui, selected: bool, text: &str) -> bool {
+    let (job, mnemonic) = mnemonic_job(ui, text, true, true);
+    let label: egui::WidgetText = match job {
+        Some(job) => job.into(),
+        None => text.into(),
+    };
+    let mut hit = ui.add(egui::RadioButton::new(selected, label)).clicked();
+    if !hit {
+        if let Some(letter) = mnemonic {
+            if mnemonic_pressed(ui, letter) {
+                ui.close();
+                hit = true;
+            }
+        }
+    }
+    hit
 }
 
 #[derive(Clone)]
@@ -2620,22 +2681,22 @@ impl YettyApp {
             menus.push(ui.menu_button(bar_title(&ctx, "View", bar_ul), |ui| {
                 ui.set_min_width(250.0);
                 let st = &mut self.settings;
-                ui.checkbox(&mut st.show_menu_bar, "Menu Bar");
-                ui.checkbox(&mut st.show_toolbar, "Toolbar");
-                ui.checkbox(&mut st.show_command_window, "Command Window");
-                ui.checkbox(&mut st.show_connect_bar, "Connect Bar");
-                ui.checkbox(&mut st.show_status_bar, "Status Bar");
-                ui.checkbox(&mut st.show_button_bar, "Button Bar");
-                ui.checkbox(&mut st.show_tabs, "Session Tabs");
-                ui.checkbox(&mut st.show_tab_sm, "Session Manager");
-                ui.checkbox(&mut st.show_command_manager, "Command Manager");
-                ui.checkbox(&mut st.show_tab_as, "Active Sessions");
+                mcheck(ui, &mut st.show_menu_bar, "Menu Bar", true);
+                mcheck(ui, &mut st.show_toolbar, "Toolbar", true);
+                mcheck(ui, &mut st.show_command_window, "Command Window", true);
+                mcheck(ui, &mut st.show_connect_bar, "Connect Bar", true);
+                mcheck(ui, &mut st.show_status_bar, "Status Bar", true);
+                mcheck(ui, &mut st.show_button_bar, "Button Bar", true);
+                mcheck(ui, &mut st.show_tabs, "Session Tabs", true);
+                mcheck(ui, &mut st.show_tab_sm, "Session Manager", true);
+                mcheck(ui, &mut st.show_command_manager, "Command Manager", true);
+                mcheck(ui, &mut st.show_tab_as, "Active Sessions", true);
                 ui.separator();
-                ui.checkbox(&mut st.show_hex_view, "Hex View");
+                mcheck(ui, &mut st.show_hex_view, "Hex View", true);
                 ui.separator();
                 sub_menu(ui, "Themes", |ui| {
                     for key in ["System", "Native", "Carbon", "VS Blue", "VS Dark", "VS White", "Office White"] {
-                        if ui.radio(self.settings.theme == key, key).clicked() {
+                        if mradio(ui, self.settings.theme == key, key) {
                             self.settings.theme = key.to_string();
                             apply_theme(&ctx, key);
                             self.dirty = true;
@@ -2656,26 +2717,26 @@ impl YettyApp {
                 });
                 ui.separator();
                 let mut tr = self.transparent;
-                if ui.checkbox(&mut tr, "Window Transparency").clicked() {
+                if mcheck(ui, &mut tr, "Window Transparency", true) {
                     self.transparent = tr;
                     config::set_window_opacity(if tr { 200 } else { 255 });
                 }
                 ui.separator();
                 let mut hs = hs_on;
-                if ui.add_enabled(has, egui::Checkbox::new(&mut hs, "Horizontal Scroll Bar")).clicked() {
+                if mcheck(ui, &mut hs, "Horizontal Scroll Bar", has) {
                     if let Some(s) = self.sessions.get_mut(self.active) {
                         s.cfg.show_hscrollbar = hs;
                     }
                 }
                 let mut vs = vs_on;
-                if ui.add_enabled(has, egui::Checkbox::new(&mut vs, "Vertical Scroll Bar")).clicked() {
+                if mcheck(ui, &mut vs, "Vertical Scroll Bar", has) {
                     if let Some(s) = self.sessions.get_mut(self.active) {
                         s.cfg.show_scrollbar = vs;
                     }
                 }
                 ui.separator();
                 let mut top = self.always_on_top;
-                if ui.checkbox(&mut top, "Always on Top").clicked() {
+                if mcheck(ui, &mut top, "Always on Top", true) {
                     self.always_on_top = top;
                     ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(if top { egui::WindowLevel::AlwaysOnTop } else { egui::WindowLevel::Normal }));
                 }
@@ -2690,13 +2751,13 @@ impl YettyApp {
                     self.open_options(EditTarget::Active, "connection");
                 }
                 sub_menu(ui, "Configure", |ui| {
-                    if ui.button("Default Session...").clicked() {
+                    if mi(ui, "Default Session...", "", true) {
                         self.open_options(EditTarget::DefaultSession, "connection");
                     }
-                    if ui.button("Local Shell Defaults...").clicked() {
+                    if mi(ui, "Local Shell Defaults...", "", true) {
                         self.open_options(EditTarget::DefaultLocal, "connection");
                     }
-                    if ui.button("Serial Defaults...").clicked() {
+                    if mi(ui, "Serial Defaults...", "", true) {
                         self.open_options(EditTarget::DefaultSerial, "connection");
                     }
                     mi(ui, "RDP Defaults...", "", false);
@@ -2706,16 +2767,16 @@ impl YettyApp {
                 }
                 ui.separator();
                 let mut kh = self.settings.keyword_highlighting;
-                if ui.add_enabled(has, egui::Checkbox::new(&mut kh, "Keyword Highlighting")).clicked() {
+                if mcheck(ui, &mut kh, "Keyword Highlighting", has) {
                     self.settings.keyword_highlighting = kh;
                     self.dirty = true;
                 }
                 if mi(ui, "Keyword Highlighting Properties...", "", has) {
                     self.open_options(EditTarget::Active, "keywords");
                 }
-                ui.checkbox(&mut self.settings.use_firewall, "Use Firewall");
+                mcheck(ui, &mut self.settings.use_firewall, "Use Firewall", true);
                 ui.separator();
-                ui.checkbox(&mut self.settings.auto_save, "Auto Save Options");
+                mcheck(ui, &mut self.settings.auto_save, "Auto Save Options", true);
                 if mi(ui, "Save Settings Now", "", true) {
                     self.settings.save();
                     self.status_msg = "Settings saved".into();
@@ -2914,16 +2975,16 @@ impl YettyApp {
             }).response);
             menus.push(ui.menu_button(bar_title(&ctx, "Window", bar_ul), |ui| {
                 ui.set_min_width(210.0);
-                if ui.radio(self.layout == Layout::Tabs, "Tabs").clicked() {
+                if mradio(ui, self.layout == Layout::Tabs, "Tabs") {
                     self.layout = Layout::Tabs;
                 }
-                if ui.radio(self.layout == Layout::TileV, "Tile Vertically").clicked() {
+                if mradio(ui, self.layout == Layout::TileV, "Tile Vertically") {
                     self.layout = Layout::TileV;
                 }
-                if ui.radio(self.layout == Layout::TileH, "Tile Horizontally").clicked() {
+                if mradio(ui, self.layout == Layout::TileH, "Tile Horizontally") {
                     self.layout = Layout::TileH;
                 }
-                if ui.radio(self.layout == Layout::Cascade, "Cascade").clicked() {
+                if mradio(ui, self.layout == Layout::Cascade, "Cascade") {
                     self.layout = Layout::Cascade;
                 }
                 ui.separator();
