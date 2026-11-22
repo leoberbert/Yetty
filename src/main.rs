@@ -43,6 +43,14 @@ fn main() -> eframe::Result<()> {
         .with_title("Yetty")
         .with_inner_size([1180.0, 740.0])
         .with_min_inner_size([640.0, 400.0]);
+    if let Ok(img) = image::load_from_memory(include_bytes!("../assets/yetty.png")) {
+        let img = img.to_rgba8();
+        viewport = viewport.with_icon(egui::IconData {
+            width: img.width(),
+            height: img.height(),
+            rgba: img.into_raw(),
+        });
+    }
     if screenshot.is_some() {
         viewport = viewport.with_active(false);
         #[cfg(target_os = "windows")]
