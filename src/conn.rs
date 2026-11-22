@@ -41,14 +41,21 @@ pub struct Connection {
 
 /// The terminal type name sent to the host for the chosen emulation.
 pub fn term_name(emulation: &str) -> &'static str {
-    match emulation {
+    // the names of the original's list (ANSI, Linux, SCOANSI, TN3270, VShell, TVI910, TVI925, VT100, VT102, VT220,
+    // VT320, WYSE50, WYSE60, Xterm, Dumb) and the spellings earlier versions saved ("SCO ANSI", "Wyse50")
+    match emulation.to_ascii_uppercase().replace(' ', "").as_str() {
         "VT100" => "vt100",
         "VT102" => "vt102",
         "VT220" => "vt220",
+        "VT320" => "vt320",
         "ANSI" => "ansi",
-        "Linux" => "linux",
-        "SCO ANSI" => "ansi",
-        "Wyse50" => "wyse50",
+        "LINUX" => "linux",
+        "SCOANSI" => "ansi",
+        "WYSE50" => "wyse50",
+        "WYSE60" => "wyse60",
+        "TVI910" => "tvi910",
+        "TVI925" => "tvi925",
+        "DUMB" => "dumb",
         _ => "xterm-256color",
     }
 }

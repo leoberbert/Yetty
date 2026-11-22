@@ -1192,37 +1192,64 @@ fn page_body(ui: &mut egui::Ui, page: &str, d: &mut OptionsDlg, st: &mut Setting
             });
         }
         "emulation" => {
-            group(ui, "Display and keyboard", |ui| {
-                check_tip(ui, &mut d.cfg.jump_scroll, "Jump scroll (fast output is shown in jumps)");
-                check_tip(ui, &mut d.cfg.minimize_drawing, "Minimize drawing (redraw at most every 50 ms)");
+            group(ui, "Emulation", |ui| {
                 ui.horizontal(|ui| {
-                    ui.label("Alternate keyboard:");
-                    egui::ComboBox::from_id_salt("alt_keyboard").width(150.0).selected_text(d.cfg.alt_keyboard.clone()).show_ui(ui, |ui| {
-                        for k in ["None", "Linux", "Xterm R5 / VT220"] {
-                            ui.selectable_value(&mut d.cfg.alt_keyboard, k.to_string(), k);
+                    ui.vertical(|ui| {
+                        ui.label("Terminal:");
+                        egui::ComboBox::from_id_salt("emu").width(130.0).selected_text(d.cfg.emulation.clone()).show_ui(ui, |ui| {
+                            for e in ["ANSI", "Linux", "SCOANSI", "TN3270", "VShell", "TVI910", "TVI925", "VT100", "VT102", "VT220", "VT320", "WYSE50", "WYSE60", "Xterm", "Dumb"] {
+                                ui.selectable_value(&mut d.cfg.emulation, e.to_string(), e);
+                            }
+                        });
+                    });
+                    ui.add_space(20.0);
+                    ui.vertical(|ui| {
+                        ui.label("Color Mode:");
+                        // None / ANSI with 256color / True Color
+                        let mode = if !d.cfg.ansi_color { 0 } else if d.cfg.truecolor { 2 } else { 1 };
+                        let mut m = mode;
+                        egui::ComboBox::from_id_salt("color_mode").width(140.0).selected_text(["None", "ANSI with 256color", "True Color"][mode]).show_ui(ui, |ui| {
+                            for (i, name) in ["None", "ANSI with 256color", "True Color"].iter().enumerate() {
+                                ui.selectable_value(&mut m, i, *name);
+                            }
+                        });
+                        if m != mode {
+                            d.cfg.ansi_color = m != 0;
+                            d.cfg.xterm256 = m != 0;
+                            d.cfg.truecolor = m == 2;
                         }
                     });
                 });
-            });
-            group(ui, "Emulation", |ui| {
+                check_tip(ui, &mut d.cfg.use_color_scheme, "Use color scheme");
                 ui.horizontal(|ui| {
-                    ui.label("Terminal:");
-                    egui::ComboBox::from_id_salt("emu").width(130.0).selected_text(d.cfg.emulation.clone()).show_ui(ui, |ui| {
-                        for e in ["Xterm", "VT100", "VT102", "VT220", "ANSI", "Linux", "SCO ANSI", "Wyse50", "VShell"] {
-                            ui.selectable_value(&mut d.cfg.emulation, e.to_string(), e);
-                        }
-                    });
-                    check_tip(ui, &mut d.cfg.ansi_color, "ANSI Color");
+                    let mut on = d.cfg.alt_keyboard != "None";
+                    if ui.checkbox(&mut on, "Select an alternate keyboard emulation").changed() {
+                        d.cfg.alt_keyboard = if on { "Default".into() } else { "None".into() };
+                    }
                 });
                 ui.horizontal(|ui| {
                     ui.add_space(20.0);
-                    check_tip(ui, &mut d.cfg.xterm256, "Enable xterm-256color");
-                    check_tip(ui, &mut d.cfg.use_color_scheme, "Use color scheme");
+                    let on = d.cfg.alt_keyboard != "None";
+                    let shown = if on { d.cfg.alt_keyboard.clone() } else { d.cfg.emulation.clone() };
+                    ui.add_enabled_ui(on, |ui| {
+                        egui::ComboBox::from_id_salt("alt_keyboard").width(130.0).selected_text(shown).show_ui(ui, |ui| {
+                            for k in ["Default", "Linux", "SCOANSI", "VT100", "VT220", "VT320", "Wyse50", "Wyse60", "Xterm", "Xterm R6", "Xterm 216+", "VShell", "TVI910", "TVI925", "TN3270"] {
+                                ui.selectable_value(&mut d.cfg.alt_keyboard, k.to_string(), k);
+                            }
+                        });
+                    });
                 });
-                check_tip(ui, &mut d.cfg.truecolor, "Enable Xterm-Truecolor");
                 ui.horizontal(|ui| {
                     ui.label("Answerback:");
                     ui.add(egui::TextEdit::singleline(&mut d.cfg.answerback).desired_width(200.0).hint_text("sent when the host asks (ENQ)"));
+                });
+            });
+            // no page of the original shows these two; it keeps them as the session options "Jump Scroll" and
+            // "Minimize Drawing While Jump Scrolling"
+            group(ui, "Display", |ui| {
+                check_tip(ui, &mut d.cfg.jump_scroll, "Jump Scroll (fast output is shown in jumps)");
+                ui.add_enabled_ui(d.cfg.jump_scroll, |ui| {
+                    check_tip(ui, &mut d.cfg.minimize_drawing, "Minimize Drawing While Jump Scrolling");
                 });
             });
             ui.horizontal_top(|ui| {

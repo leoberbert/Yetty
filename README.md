@@ -272,9 +272,9 @@ Cada sessão guarda protocolo, host, porta, usuário, método de autenticação,
 - **Esquemas de cor** do terminal: 23 opções, de cores clássicas a temas inspirados em editores.
 - Paleta ANSI editável em **Global Options > ANSI Color**.
 - Realce de palavras-chave: busca com `Alt+U`.
-- **Color scheme overrides ANSI color** (Global Options > ANSI Color): com um esquema em uso, o preto e o branco ANSI usam o fundo e o texto do esquema.
-- **Jump scroll** e **Minimize drawing** (Session Options > Emulation): saída rápida desenhada a cada 120 ms ou 50 ms.
-- **Alternate keyboard** (None, Linux, Xterm R5/VT220): códigos de F1 a F5.
+- **Color Scheme Overrides Ansi Color** (opção de sessão, ligada como no `Default.ini` do SecureCRT): com um esquema em uso, as 16 cores ANSI são as da paleta do esquema (por exemplo Solarized Dark), e não as de Global Options > ANSI Color. O System Color Scheme usa a paleta Dark Pastel.
+- **Jump Scroll** e **Minimize Drawing While Jump Scrolling** (opções de sessão, ligadas como no original; Session Options > Emulation): a saída rápida é desenhada a cada 120 ms (250 ms com Minimize Drawing); a primeira saída depois de uma pausa, como o eco de uma tecla, aparece na hora.
+- **Select an alternate keyboard emulation** (Session Options > Emulation): Default, Linux, SCOANSI, VT100, VT220, VT320, Wyse50, Wyse60, Xterm, Xterm R6, Xterm 216+, VShell, TVI910, TVI925 e TN3270, com os códigos de F1 a F12 dos arquivos `Keymaps` do SecureCRT. A opção Custom não existe.
 - **Mouse**: programas que pedem o mouse (vim, tmux) o recebem no padrão xterm; `Shift` mantém a seleção local (**Shift forces local mouse**). **Position cursor on click** move o cursor da linha de comando com um clique.
 - **Barra de rolagem horizontal** para terminais de tamanho fixo mais largos que a janela; `Shift`+roda rola de lado.
 - **Barras de botões** com nome (menu de contexto do botão ➕) escolhidas por sessão, e **posição inicial** da janela.

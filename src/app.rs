@@ -1177,7 +1177,6 @@ impl YettyApp {
         if !settings.global.save_tree_state {
             settings.tree_open.clear();
         }
-        config::set_scheme_overrides_ansi(settings.global.scheme_overrides_ansi);
         install_fallback_fonts(&cc.egui_ctx);
         if settings.ansi_palette.len() == 16 {
             let mut p = [[0u8; 3]; 16];

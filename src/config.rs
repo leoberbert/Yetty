@@ -274,6 +274,9 @@ pub struct SessionConfig {
     pub scale_font: bool,
     pub xterm256: bool,
     pub use_color_scheme: bool,
+    /// Session option "Color Scheme Overrides Ansi Color" (no page of the original shows it; on by default): with
+    /// a color scheme in use, the 16 ANSI colors are the scheme's palette instead of Global Options > ANSI Color
+    pub scheme_overrides_ansi: bool,
     pub cua: bool,
     pub close_on_disconnect: bool,
     pub clear_on_disconnect: bool,
@@ -346,9 +349,9 @@ pub struct SessionConfig {
     pub xmodem_1k: bool,
     pub zmodem_upload_cmd: String,
     pub zmodem_auto_download: bool,
-    /// Terminal > Emulation: fast output is shown in jumps (the screen updates after a burst, not line by line)
+    /// Session option "Jump Scroll" (no page of the original shows it): output is shown in jumps, not line by line
     pub jump_scroll: bool,
-    /// Terminal > Emulation: redraw at most every 50 ms while output arrives
+    /// Session option "Minimize Drawing While Jump Scrolling": with jump scroll, redraw less often
     pub minimize_drawing: bool,
     /// Mouse events go to a remote program that asked for them (xterm mouse reporting)
     pub mouse_report: bool,
@@ -356,7 +359,7 @@ pub struct SessionConfig {
     pub shift_local_mouse: bool,
     /// A click on the cursor line moves the cursor there (arrow keys are sent)
     pub cursor_click: bool,
-    /// "None", "Linux" or "Xterm R5 / VT220": the codes of F1-F5
+    /// "None" (alternate keyboard off) or the name chosen under "Select an alternate keyboard emulation"
     pub alt_keyboard: String,
     pub show_hscrollbar: bool,
     /// Name of the button bar this session shows ("" = the default one)
@@ -433,6 +436,7 @@ impl Default for SessionConfig {
             scale_font: false,
             xterm256: true,
             use_color_scheme: true,
+            scheme_overrides_ansi: true,
             cua: true,
             close_on_disconnect: false,
             clear_on_disconnect: false,
@@ -502,8 +506,8 @@ impl Default for SessionConfig {
             xmodem_1k: false,
             zmodem_upload_cmd: "rz".into(),
             zmodem_auto_download: true,
-            jump_scroll: false,
-            minimize_drawing: false,
+            jump_scroll: true,
+            minimize_drawing: true,
             mouse_report: true,
             shift_local_mouse: true,
             cursor_click: false,
@@ -1241,26 +1245,55 @@ pub fn expand_log_name(pattern: &str, host: &str, session: &str) -> String {
 
 pub type Rgb = [u8; 3];
 
-/// Default ANSI palette: what SecureCRT draws with its "Standard" palette under the System Color Scheme
-/// (measured from the original's window on 2026-11-19, SGR 40-47 / 100-107 in a Local Shell and over SSH).
+/// The "Standard" ANSI palette of the original (Global.ini, "ANSI Color RGB"): normal colours 0-7, then bold 8-15.
 pub const ANSI_PALETTE: [Rgb; 16] = [
     [0x00, 0x00, 0x00],
-    [0xff, 0x55, 0x55],
-    [0x55, 0xff, 0x55],
-    [0xff, 0xff, 0x55],
-    [0x55, 0x55, 0xff],
-    [0xff, 0x55, 0xff],
-    [0x55, 0xff, 0xff],
-    [0xbb, 0xbb, 0xbb],
-    [0x55, 0x55, 0x55],
-    [0xff, 0x55, 0x55],
-    [0x55, 0xff, 0x55],
-    [0xff, 0xff, 0x55],
-    [0x55, 0x55, 0xff],
-    [0xff, 0x55, 0xff],
-    [0x55, 0xff, 0xff],
+    [0xa0, 0x00, 0x00],
+    [0x00, 0xa0, 0x00],
+    [0xa0, 0xa0, 0x00],
+    [0x00, 0x00, 0xa0],
+    [0xa0, 0x00, 0xa0],
+    [0x00, 0xa0, 0xa0],
+    [0xc0, 0xc0, 0xc0],
+    [0x80, 0x80, 0x80],
+    [0xff, 0x00, 0x00],
+    [0x00, 0xff, 0x00],
+    [0xff, 0xff, 0x00],
+    [0x00, 0x00, 0xff],
+    [0xff, 0x00, 0xff],
+    [0x00, 0xff, 0xff],
     [0xff, 0xff, 0xff],
 ];
+
+/// The original's built-in ANSI palettes besides "Standard" (Global.ini, "ANSI Color Palettes"): colours 0-7, then bold 8-15.
+pub const PALETTES: &[(&str, [u32; 16])] = &[
+    ("Birds of Paradise", [0x573d26, 0xbe2d26, 0x6ba18a, 0xe99d2a, 0x5a86ad, 0xac80a6, 0x74a6ad, 0xe0dbb7, 0x9b6c4a, 0xe84627, 0x95d8ba, 0xd0d150, 0xb8d3ed, 0xd19ecb, 0x93cfd7, 0xfff9d5]),
+    ("Chalkboard", [0x000000, 0xc37372, 0x72c373, 0xc2c372, 0x7372c3, 0xc372c2, 0x72c2c3, 0xd9d9d9, 0x323232, 0xdbaaaa, 0xaadbaa, 0xdadbaa, 0xaaaadb, 0xdbaada, 0xaadadb, 0xffffff]),
+    ("Ciapre", [0x181818, 0x810009, 0x48513b, 0xcc8b3f, 0x576d8c, 0x724d7c, 0x5c4f4b, 0xaea47f, 0x555555, 0xac3835, 0xa6a75d, 0xdcdf7c, 0x3097c6, 0xd33061, 0xf3dbb2, 0xf4f4f4]),
+    ("Dark Pastel", [0x000000, 0xff5555, 0x55ff55, 0xffff55, 0x5555ff, 0xff55ff, 0x55ffff, 0xbbbbbb, 0x555555, 0xff5555, 0x55ff55, 0xffff55, 0x5555ff, 0xff55ff, 0x55ffff, 0xffffff]),
+    ("Desert", [0x4d4d4d, 0xff2b2b, 0x98fb98, 0xf0e68c, 0xcd853f, 0xffdead, 0xffa0a0, 0xf5deb3, 0x555555, 0xff5555, 0x55ff55, 0xffff55, 0x87ceff, 0xff55ff, 0xffd700, 0xffffff]),
+    ("Espresso", [0x353535, 0xd25252, 0xa5c261, 0xffc66d, 0x6c99bb, 0xd197d9, 0xbed6ff, 0xeeeeec, 0x535353, 0xf00c0c, 0xc2e075, 0xe1e48b, 0x8ab7d9, 0xefb5f7, 0xdcf4ff, 0xffffff]),
+    ("Idletoes", [0x323232, 0xd25252, 0x7fe173, 0xffc66d, 0x4099ff, 0xf680ff, 0xbed6ff, 0xeeeeec, 0x535353, 0xf07070, 0x9dff91, 0xffe48b, 0x5eb7f7, 0xff9dff, 0xdcf4ff, 0xffffff]),
+    ("Invisibone", [0x303030, 0xd370a3, 0x6d9e3f, 0xb58858, 0x6095c5, 0xac7bde, 0x3ba275, 0xcfcfcf, 0x686868, 0xffa7da, 0xa3d572, 0xefbd8b, 0x98cbfe, 0xe5b0ff, 0x75daa9, 0xffffff]),
+    ("Novel", [0x000000, 0xcc0000, 0x009600, 0xd06b00, 0x0000cc, 0xcc00cc, 0x0087cc, 0xcccccc, 0x808080, 0xcc0000, 0x009600, 0xd06b00, 0x0000cc, 0xcc00cc, 0x0087cc, 0xffffff]),
+    ("Solarized Dark", [0x073642, 0xdc322f, 0x859900, 0xb58900, 0x268bd2, 0xd33682, 0x2aa198, 0xeee8d5, 0x002b38, 0xcb4b16, 0x586e75, 0x657b83, 0x839496, 0x6c71c4, 0x93a1a1, 0xfdf6e3]),
+    ("Solarized Darcula", [0x25292a, 0xf24840, 0x629655, 0xb68800, 0x2075c7, 0x797fd4, 0x15968d, 0xd2d8d9, 0x25292a, 0xf24840, 0x629655, 0xb68800, 0x2075c7, 0x797fd4, 0x15968d, 0xd2d8d9]),
+    ("Solarized Light", [0x073642, 0xdc322f, 0x859900, 0xb58900, 0x268bd2, 0xd33682, 0x2aa198, 0xeee8d5, 0x002b38, 0xcb4b16, 0x586e75, 0x657b83, 0x839496, 0x6c71c4, 0x93a1a1, 0xfdf6e3]),
+    ("Tomorrow", [0x8e908c, 0xff3334, 0x9ec400, 0xeab700, 0x5795e6, 0xb777e0, 0x54ced6, 0xefefef, 0x000000, 0xc82829, 0x718c00, 0xf5871f, 0x4271ae, 0x8959a8, 0x3e999f, 0xd6d6d6]),
+    ("Zenburn", [0x4d4d4d, 0x705050, 0x60b48a, 0xf0dfaf, 0x506070, 0xdc8cc3, 0x8cd0d3, 0xdcdccc, 0x709080, 0xdca3a3, 0xc3bf9f, 0xe0cf9f, 0x94bff3, 0xec93d3, 0x93e0e3, 0xffffff]),
+];
+
+pub fn palette_from_hex(v: &[u32; 16]) -> [Rgb; 16] {
+    v.map(|c| [(c >> 16) as u8, (c >> 8) as u8, c as u8])
+}
+
+/// The ANSI palette a colour scheme brings along (the last field of its entry in Global.ini). None: the scheme names
+/// "Standard", so the palette chosen in Global Options > ANSI Color stays. The System Color Scheme is not in the
+/// file; what the original draws under it (SGR 31, 37, 90... measured on 2026-11-22) is the Dark Pastel palette.
+pub fn scheme_palette(scheme: &str) -> Option<[Rgb; 16]> {
+    let name = if scheme == SYSTEM_SCHEME { "Dark Pastel" } else { scheme };
+    PALETTES.iter().find(|p| p.0 == name).map(|p| palette_from_hex(&p.1))
+}
 
 const fn hex(v: u32) -> Rgb {
     [(v >> 16) as u8, (v >> 8) as u8, v as u8]
@@ -1343,17 +1376,6 @@ pub fn set_ansi_palette(p: [Rgb; 16]) {
     if let Ok(mut w) = PALETTE.write() {
         *w = if p == ANSI_PALETTE { None } else { Some(p) };
     }
-}
-
-static SCHEME_OVERRIDES_ANSI: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
-
-/// Global Options > ANSI Color "Color scheme overrides ANSI color".
-pub fn scheme_overrides_ansi() -> bool {
-    SCHEME_OVERRIDES_ANSI.load(std::sync::atomic::Ordering::Relaxed)
-}
-
-pub fn set_scheme_overrides_ansi(on: bool) {
-    SCHEME_OVERRIDES_ANSI.store(on, std::sync::atomic::Ordering::Relaxed);
 }
 
 impl SessionConfig {

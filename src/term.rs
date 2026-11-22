@@ -83,8 +83,10 @@ pub struct Session {
     /// the mouse button a remote program was told is down, and the last cell reported
     mouse_down: Option<u8>,
     mouse_last: (u16, u16),
-    /// output held back by jump scroll / minimize drawing
+    /// output held back by jump scroll
     jump_pending: Vec<u8>,
+    /// when held-back output was last drawn: output arriving at least a jump interval later is drawn at once (a
+    /// typed key's echo does not wait), faster output is held until the interval is over
     jump_since: Option<Instant>,
     pub selection: Option<(VPos, VPos)>,
     pub find_hit: Option<(i64, u16, usize)>,
@@ -750,9 +752,10 @@ impl Session {
         }
     }
 
-    /// Jump scroll shows output in jumps (every 120 ms), minimize drawing at most every 50 ms; a big backlog goes at once.
+    /// Jump scroll shows output in jumps (every 120 ms); "Minimize Drawing While Jump Scrolling" stretches that to
+    /// 250 ms. A big backlog goes at once.
     fn jump_due(&self) -> bool {
-        let wait = if self.cfg.jump_scroll { 120 } else { 50 };
+        let wait = if self.cfg.minimize_drawing { 250 } else { 120 };
         self.jump_since.map(|t| t.elapsed() >= Duration::from_millis(wait)).unwrap_or(true) || self.jump_pending.len() > 256 * 1024
     }
 
@@ -896,14 +899,13 @@ impl Session {
                     if !ssh_like {
                         self.note_text(&d);
                     }
-                    let d = if self.cfg.jump_scroll || self.cfg.minimize_drawing {
+                    let d = if self.cfg.jump_scroll {
                         self.jump_pending.extend_from_slice(&d);
-                        self.jump_since.get_or_insert_with(Instant::now);
                         if !self.jump_due() {
                             self.ctx.request_repaint_after(Duration::from_millis(30));
                             continue;
                         }
-                        self.jump_since = None;
+                        self.jump_since = Some(Instant::now());
                         std::mem::take(&mut self.jump_pending)
                     } else {
                         d
@@ -912,7 +914,7 @@ impl Session {
                 }
                 ConnEvent::Closed(why) => {
                     if !self.jump_pending.is_empty() {
-                        self.jump_since = None;
+                        self.jump_since = Some(Instant::now());
                         let held = std::mem::take(&mut self.jump_pending);
                         self.feed_screen(&held);
                     }
@@ -938,7 +940,7 @@ impl Session {
         }
         // Jump scroll / minimize drawing: output held back is drawn once its time is up
         if !self.jump_pending.is_empty() && self.jump_due() {
-            self.jump_since = None;
+            self.jump_since = Some(Instant::now());
             let held = std::mem::take(&mut self.jump_pending);
             self.feed_screen(&held);
         } else if !self.jump_pending.is_empty() {
@@ -1343,23 +1345,18 @@ fn c32(c: Rgb) -> Color32 {
     Color32::from_rgb(c[0], c[1], c[2])
 }
 
-fn resolve(color: vt100::Color, default: Rgb, bold: bool, ansi: bool, truecolor: bool, scheme: Option<(Rgb, Rgb)>) -> Rgb {
+fn resolve(color: vt100::Color, default: Rgb, bold: bool, ansi: bool, truecolor: bool, scheme: Option<[Rgb; 16]>) -> Rgb {
     if !ansi {
         return default;
     }
     match color {
         vt100::Color::Default => default,
         vt100::Color::Idx(i) => {
-            if let Some((fg, bg)) = scheme {
-                if !bold && i == 7 {
-                    return fg;
-                }
-                if i == 0 {
-                    return bg;
-                }
-            }
             let i = if bold && i < 8 { i + 8 } else { i };
-            config::xterm256(i)
+            match scheme {
+                Some(p) if i < 16 => p[i as usize],
+                _ => config::xterm256(i),
+            }
         }
         vt100::Color::Rgb(r, g, b) => {
             if truecolor {
@@ -1525,8 +1522,8 @@ pub fn show(ui: &mut egui::Ui, s: &mut Session, opts: &ViewOptions, rect: Rect) 
     }
 
     let (fg_def, bg_def) = if s.cfg.use_color_scheme { config::scheme(&s.cfg.color_scheme) } else { ([0xc0, 0xc0, 0xc0], [0, 0, 0]) };
-    // "Color scheme overrides ANSI color": with a scheme in use, ANSI white / black take its text / background colors
-    let scheme_ov = if s.cfg.use_color_scheme && config::scheme_overrides_ansi() { Some((fg_def, bg_def)) } else { None };
+    // "Color Scheme Overrides Ansi Color": the scheme brings its own 16 ANSI colors
+    let scheme_ov = if s.cfg.use_color_scheme && s.cfg.scheme_overrides_ansi { config::scheme_palette(&s.cfg.color_scheme) } else { None };
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 0.0, c32(bg_def));
 
@@ -2026,24 +2023,46 @@ pub fn show(ui: &mut egui::Ui, s: &mut Session, opts: &ViewOptions, rect: Rect) 
     resp
 }
 
-/// F1-F5 of the "Alternate keyboard" choices (None: the normal codes).
+/// F1-F12 of the "Select an alternate keyboard emulation" choices ("None": the normal codes). The tables come from
+/// the original's Keymaps (vt100.key, vt220.key, vt220-linux.key, vt400.key, wyse50.key, VShell.key); SCOANSI and the
+/// Xterm variants have no file there. Only the unmodified keys are remapped. `Some(empty)`: the key does a local
+/// action in the original (hold / print screen, break) and sends nothing.
 fn alt_function_key(kind: &str, key: egui::Key, m: egui::Modifiers) -> Option<Vec<u8>> {
+    use egui::Key::*;
     if m.ctrl || m.alt || m.shift {
         return None;
     }
-    let n = match key {
-        egui::Key::F1 => 0,
-        egui::Key::F2 => 1,
-        egui::Key::F3 => 2,
-        egui::Key::F4 => 3,
-        egui::Key::F5 => 4,
-        _ => return None,
-    };
+    let n = [F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12].iter().position(|&k| k == key)? + 1;
+    // ESC [ n ~ for F1..F12 as the VT220 sends them
+    const TILDE: [u8; 12] = [11, 12, 13, 14, 15, 17, 18, 19, 20, 21, 23, 24];
+    let tilde = |code: u8| Some(format!("\x1b[{code}~").into_bytes());
     match kind {
-        // the Linux console: ESC [ [ A .. E
-        "Linux" => Some(vec![0x1b, b'[', b'[', b'A' + n]),
-        // xterm R5 and the VT220: ESC [ 11~ .. 15~
-        "Xterm R5 / VT220" => Some(format!("\x1b[{}~", 11 + n).into_bytes()),
+        // vt100.key: F1-F4 are PF1-PF4
+        "VT100" if n <= 4 => Some(vec![0x1b, b'O', b'P' + n as u8 - 1]),
+        // vt220.key: F1 / F2 hold and print screen, F5 break, F6-F12 the VT220 codes
+        "VT220" => match n {
+            1 | 2 | 5 => Some(Vec::new()),
+            6..=12 => tilde(TILDE[n - 1]),
+            _ => None,
+        },
+        // vt220-linux.key: F5-F9 send F6-F10, F10 sends F16, F11 and F12 as usual
+        "Linux" => match n {
+            5..=9 => tilde(TILDE[n]),
+            10 => tilde(29),
+            11 | 12 => tilde(TILDE[n - 1]),
+            _ => None,
+        },
+        // vt400.key: ESC [ 11~ .. 24~
+        "VT320" => tilde(TILDE[n - 1]),
+        // xterm R5: F1-F5 as ESC [ 11~ .. 15~ ("Xterm R5 / VT220" is the name earlier versions saved)
+        "Xterm" | "Xterm R5 / VT220" if n <= 5 => tilde(TILDE[n - 1]),
+        // SCO console: ESC [ M .. X
+        "SCOANSI" => Some(vec![0x1b, b'[', b'M' + n as u8 - 1]),
+        // wyse50.key: ^A, '@' + n - 1, CR
+        "Wyse50" | "Wyse60" | "TVI910" | "TVI925" => Some(vec![0x01, b'@' + n as u8 - 1, 0x0d]),
+        // VShell.key: 0xFF 0x00 'p' + n - 1
+        "VShell" => Some(vec![0xff, 0x00, 0x70 + n as u8 - 1]),
+        // Default, Xterm R6, Xterm 216+ and TN3270 keep the emulation's own codes
         _ => None,
     }
 }
@@ -2545,5 +2564,58 @@ mod real_mouse {
         let after_right = active();
         wsl("tmux -L ytm kill-server");
         assert_eq!((after_left.as_str(), after_right.as_str()), ("0", "1"), "pane focus did not follow the clicks");
+    }
+}
+
+#[cfg(test)]
+mod alt_keyboard_tests {
+    use super::alt_function_key;
+    use egui::{Key, Modifiers};
+
+    fn key(kind: &str, k: Key) -> Option<Vec<u8>> {
+        alt_function_key(kind, k, Modifiers::NONE)
+    }
+
+    // expected values are the N (unmodified) lines of the original's Keymaps/*.key files
+    #[test]
+    fn follows_the_original_keymap_files() {
+        assert_eq!(key("VT100", Key::F2), Some(b"\x1bOQ".to_vec())); // vt100.key: VT_PF2
+        assert_eq!(key("VT100", Key::F5), None);
+        assert_eq!(key("VT220", Key::F1), Some(Vec::new())); // vt220.key: hold screen
+        assert_eq!(key("VT220", Key::F6), Some(b"\x1b[17~".to_vec()));
+        assert_eq!(key("Linux", Key::F5), Some(b"\x1b[17~".to_vec())); // vt220-linux.key: F5 sends VT_F6
+        assert_eq!(key("Linux", Key::F10), Some(b"\x1b[29~".to_vec())); // VT_F16
+        assert_eq!(key("Linux", Key::F11), Some(b"\x1b[23~".to_vec()));
+        assert_eq!(key("VT320", Key::F3), Some(b"\x1b[13~".to_vec())); // vt400.key
+        assert_eq!(key("Wyse50", Key::F1), Some(vec![1, b'@', 13])); // wyse50.key: "\001\100\015"
+        assert_eq!(key("Wyse50", Key::F12), Some(vec![1, b'K', 13]));
+        assert_eq!(key("VShell", Key::F1), Some(vec![0xff, 0x00, 0x70])); // VShell.key: "\377\000\160"
+        assert_eq!(key("VShell", Key::F12), Some(vec![0xff, 0x00, 0x7b]));
+        assert_eq!(key("Default", Key::F1), None);
+        assert_eq!(alt_function_key("Wyse50", Key::F1, Modifiers::SHIFT), None);
+    }
+}
+
+#[cfg(test)]
+mod scheme_palette_tests {
+    use super::resolve;
+    use crate::config;
+
+    // measured in the original: under Solarized Dark, SGR 40 / 37 / 1;37 / 1;30 draw 073642 / eee8d5 / fdf6e3 / 002b38
+    #[test]
+    fn the_scheme_brings_its_ansi_colors() {
+        let pal = config::scheme_palette("Solarized Dark");
+        let idx = |i| vt100::Color::Idx(i);
+        let d = [1, 2, 3];
+        assert_eq!(resolve(idx(0), d, false, true, true, pal), [0x07, 0x36, 0x42]);
+        assert_eq!(resolve(idx(7), d, false, true, true, pal), [0xee, 0xe8, 0xd5]);
+        assert_eq!(resolve(idx(7), d, true, true, true, pal), [0xfd, 0xf6, 0xe3]);
+        assert_eq!(resolve(idx(0), d, true, true, true, pal), [0x00, 0x2b, 0x38]);
+        // the palettes of "Standard" schemes and the 256-colour cube are not replaced
+        assert_eq!(config::scheme_palette("Monochrome"), None);
+        assert_eq!(resolve(idx(1), d, false, true, true, None), config::ansi_palette()[1]);
+        assert_eq!(resolve(idx(100), d, false, true, true, pal), config::xterm256(100));
+        // the System Color Scheme draws with the Dark Pastel palette
+        assert_eq!(config::scheme_palette(config::SYSTEM_SCHEME).unwrap()[1], [0xff, 0x55, 0x55]);
     }
 }

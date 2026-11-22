@@ -69,8 +69,6 @@ pub struct GlobalOpts {
     pub initial_send_target: u8,
     /// ANSI Color
     pub ansi_palette_name: String,
-    /// Global.ini "Color Scheme Overrides Ansi Color": the scheme's text and background replace ANSI white and black
-    pub scheme_overrides_ansi: bool,
     pub custom_palettes: Vec<(String, Vec<[u8; 3]>)>,
 }
 
@@ -114,7 +112,6 @@ impl Default for GlobalOpts {
             swap_enter: false,
             initial_send_target: 0,
             ansi_palette_name: "Standard".into(),
-            scheme_overrides_ansi: true,
             custom_palettes: Vec::new(),
         }
     }
@@ -134,27 +131,7 @@ pub const STATUS_COLUMNS: [&str; 8] = [
 ];
 const STATUS_MAX: usize = 5;
 
-/// The original's built-in ANSI palettes (Global.ini): normal colours 0-7, then bold 8-15.
-const PALETTES: &[(&str, [u32; 16])] = &[
-    ("Birds of Paradise", [0x573d26, 0xbe2d26, 0x6ba18a, 0xe99d2a, 0x5a86ad, 0xac80a6, 0x74a6ad, 0xe0dbb7, 0x9b6c4a, 0xe84627, 0x95d8ba, 0xd0d150, 0xb8d3ed, 0xd19ecb, 0x93cfd7, 0xfff9d5]),
-    ("Chalkboard", [0x000000, 0xc37372, 0x72c373, 0xc2c372, 0x7372c3, 0xc372c2, 0x72c2c3, 0xd9d9d9, 0x323232, 0xdbaaaa, 0xaadbaa, 0xdadbaa, 0xaaaadb, 0xdbaada, 0xaadadb, 0xffffff]),
-    ("Ciapre", [0x181818, 0x810009, 0x48513b, 0xcc8b3f, 0x576d8c, 0x724d7c, 0x5c4f4b, 0xaea47f, 0x555555, 0xac3835, 0xa6a75d, 0xdcdf7c, 0x3097c6, 0xd33061, 0xf3dbb2, 0xf4f4f4]),
-    ("Dark Pastel", [0x000000, 0xff5555, 0x55ff55, 0xffff55, 0x5555ff, 0xff55ff, 0x55ffff, 0xbbbbbb, 0x555555, 0xff5555, 0x55ff55, 0xffff55, 0x5555ff, 0xff55ff, 0x55ffff, 0xffffff]),
-    ("Desert", [0x4d4d4d, 0xff2b2b, 0x98fb98, 0xf0e68c, 0xcd853f, 0xffdead, 0xffa0a0, 0xf5deb3, 0x555555, 0xff5555, 0x55ff55, 0xffff55, 0x87ceff, 0xff55ff, 0xffd700, 0xffffff]),
-    ("Espresso", [0x353535, 0xd25252, 0xa5c261, 0xffc66d, 0x6c99bb, 0xd197d9, 0xbed6ff, 0xeeeeec, 0x535353, 0xf00c0c, 0xc2e075, 0xe1e48b, 0x8ab7d9, 0xefb5f7, 0xdcf4ff, 0xffffff]),
-    ("Idletoes", [0x323232, 0xd25252, 0x7fe173, 0xffc66d, 0x4099ff, 0xf680ff, 0xbed6ff, 0xeeeeec, 0x535353, 0xf07070, 0x9dff91, 0xffe48b, 0x5eb7f7, 0xff9dff, 0xdcf4ff, 0xffffff]),
-    ("Invisibone", [0x303030, 0xd370a3, 0x6d9e3f, 0xb58858, 0x6095c5, 0xac7bde, 0x3ba275, 0xcfcfcf, 0x686868, 0xffa7da, 0xa3d572, 0xefbd8b, 0x98cbfe, 0xe5b0ff, 0x75daa9, 0xffffff]),
-    ("Novel", [0x000000, 0xcc0000, 0x009600, 0xd06b00, 0x0000cc, 0xcc00cc, 0x0087cc, 0xcccccc, 0x808080, 0xcc0000, 0x009600, 0xd06b00, 0x0000cc, 0xcc00cc, 0x0087cc, 0xffffff]),
-    ("Solarized Dark", [0x073642, 0xdc322f, 0x859900, 0xb58900, 0x268bd2, 0xd33682, 0x2aa198, 0xeee8d5, 0x002b38, 0xcb4b16, 0x586e75, 0x657b83, 0x839496, 0x6c71c4, 0x93a1a1, 0xfdf6e3]),
-    ("Solarized Darcula", [0x25292a, 0xf24840, 0x629655, 0xb68800, 0x2075c7, 0x797fd4, 0x15968d, 0xd2d8d9, 0x25292a, 0xf24840, 0x629655, 0xb68800, 0x2075c7, 0x797fd4, 0x15968d, 0xd2d8d9]),
-    ("Solarized Light", [0x073642, 0xdc322f, 0x859900, 0xb58900, 0x268bd2, 0xd33682, 0x2aa198, 0xeee8d5, 0x002b38, 0xcb4b16, 0x586e75, 0x657b83, 0x839496, 0x6c71c4, 0x93a1a1, 0xfdf6e3]),
-    ("Tomorrow", [0x8e908c, 0xff3334, 0x9ec400, 0xeab700, 0x5795e6, 0xb777e0, 0x54ced6, 0xefefef, 0x000000, 0xc82829, 0x718c00, 0xf5871f, 0x4271ae, 0x8959a8, 0x3e999f, 0xd6d6d6]),
-    ("Zenburn", [0x4d4d4d, 0x705050, 0x60b48a, 0xf0dfaf, 0x506070, 0xdc8cc3, 0x8cd0d3, 0xdcdccc, 0x709080, 0xdca3a3, 0xc3bf9f, 0xe0cf9f, 0x94bff3, 0xec93d3, 0x93e0e3, 0xffffff]),
-];
-
-fn palette_of(v: &[u32; 16]) -> [Rgb; 16] {
-    v.map(|c| [(c >> 16) as u8, (c >> 8) as u8, c as u8])
-}
+use crate::config::PALETTES;
 
 /// The colours of a palette by name: "Standard", a built-in one or a custom one.
 fn named_palette(st: &Settings, name: &str) -> Option<[Rgb; 16]> {
@@ -162,7 +139,7 @@ fn named_palette(st: &Settings, name: &str) -> Option<[Rgb; 16]> {
         return Some(config::ANSI_PALETTE);
     }
     if let Some((_, p)) = PALETTES.iter().find(|p| p.0 == name) {
-        return Some(palette_of(p));
+        return Some(config::palette_from_hex(p));
     }
     st.global.custom_palettes.iter().find(|p| p.0 == name).and_then(|p| <[Rgb; 16]>::try_from(p.1.as_slice()).ok())
 }
@@ -317,7 +294,6 @@ pub fn window(ctx: &egui::Context, st: &mut Settings, gs: &mut GlobalState) -> G
             if !ok {
                 *st = orig;
                 config::set_ansi_palette(pal);
-                config::set_scheme_overrides_ansi(st.global.scheme_overrides_ansi);
             }
         }
         // the next opening starts on the same page, with fresh lists
@@ -1143,9 +1119,6 @@ fn status_columns(ui: &mut egui::Ui, g: &mut GlobalOpts, gs: &mut GlobalState) {
 fn ansi_page(ui: &mut egui::Ui, st: &mut Settings, gs: &mut GlobalState) {
     let mut pal = config::ansi_palette();
     let mut changed = false;
-    group(ui, "Color scheme", |ui| {
-        changed_scheme_flag(ui, st);
-    });
     group(ui, "Palette name", |ui| {
         ui.horizontal(|ui| {
             let mut name = st.global.ansi_palette_name.clone();
@@ -1592,10 +1565,4 @@ fn delete_host_key(k: &HostKey) -> Result<(), String> {
         out.push_str(nl);
     }
     std::fs::write(&path, out).map_err(|e| format!("Could not write {}: {e}", path.display()))
-}
-
-fn changed_scheme_flag(ui: &mut egui::Ui, st: &mut Settings) {
-    if ui.checkbox(&mut st.global.scheme_overrides_ansi, "Color scheme overrides ANSI color").on_hover_text("With a color scheme in use, ANSI black is drawn as the scheme's background and ANSI white as its text color").changed() {
-        config::set_scheme_overrides_ansi(st.global.scheme_overrides_ansi);
-    }
 }
