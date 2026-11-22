@@ -31,7 +31,9 @@ pub fn could_be_listing(partial: &str) -> bool {
     b.iter().skip(1).take(9).all(|c| b"-rwxsStT".contains(c)) && (b.len() <= 10 || b[10] == b' ')
 }
 
-const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const MONTHS: [&str; 12] = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
 
 /// Parse `-rw-r--r--    ? owner group    size Mon dd HH:MM name` (or `Mon dd  YYYY`). `now` = (year, month).
 pub fn parse(line: &str, now_year: u32, now_month: u32) -> Option<Entry> {
@@ -57,7 +59,11 @@ pub fn parse(line: &str, now_year: u32, now_month: u32) -> Option<Entry> {
     let day: u32 = tok[6].parse().ok()?;
     let (year, time) = if tok[7].contains(':') {
         // recent file: no year printed; it is this year unless that would be in the future
-        let y = if (mi as u32 + 1) > now_month { now_year.saturating_sub(1) } else { now_year };
+        let y = if (mi as u32 + 1) > now_month {
+            now_year.saturating_sub(1)
+        } else {
+            now_year
+        };
         (y, Some(tok[7].to_string()))
     } else {
         (tok[7].parse().ok()?, None)
@@ -77,10 +83,29 @@ pub fn parse(line: &str, now_year: u32, now_month: u32) -> Option<Entry> {
 
 /// The lines of a listing, sorted by name (ignoring case) and laid out like the original's.
 pub fn format(mut entries: Vec<Entry>) -> Vec<String> {
-    entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()).then(a.name.cmp(&b.name)));
-    let ow = entries.iter().map(|e| e.owner.chars().count()).max().unwrap_or(0) + 2;
-    let gw = entries.iter().map(|e| e.group.chars().count()).max().unwrap_or(0);
-    let sw = entries.iter().map(|e| e.size.len()).max().unwrap_or(0).max(10);
+    entries.sort_by(|a, b| {
+        a.name
+            .to_lowercase()
+            .cmp(&b.name.to_lowercase())
+            .then(a.name.cmp(&b.name))
+    });
+    let ow = entries
+        .iter()
+        .map(|e| e.owner.chars().count())
+        .max()
+        .unwrap_or(0)
+        + 2;
+    let gw = entries
+        .iter()
+        .map(|e| e.group.chars().count())
+        .max()
+        .unwrap_or(0);
+    let sw = entries
+        .iter()
+        .map(|e| e.size.len())
+        .max()
+        .unwrap_or(0)
+        .max(10);
     entries
         .iter()
         .map(|e| {
@@ -88,7 +113,18 @@ pub fn format(mut entries: Vec<Entry>) -> Vec<String> {
                 Some(t) => format!("{} {:02}, {} {}", e.month, e.day, e.year, t),
                 None => format!("{} {:02}, {}", e.month, e.day, e.year),
             };
-            format!("{} {:<ow$} {:<gw$} {:>sw$} {} {}", e.perm, e.owner, e.group, e.size, when, e.name, ow = ow, gw = gw, sw = sw)
+            format!(
+                "{} {:<ow$} {:<gw$} {:>sw$} {} {}",
+                e.perm,
+                e.owner,
+                e.group,
+                e.size,
+                when,
+                e.name,
+                ow = ow,
+                gw = gw,
+                sw = sw
+            )
         })
         .collect()
 }
@@ -99,12 +135,35 @@ mod tests {
 
     #[test]
     fn listing_is_reformatted_and_sorted() {
-        let a = parse("-rwxrwxr-x    ? ubuntu   ubuntu        920 Sep 22 20:45 1.sh", 2026, 11).unwrap();
-        let b = parse("drwxrwxr-x    ? ubuntu   ubuntu         88 Oct 21 12:13 Apps", 2026, 11).unwrap();
-        let c = parse("-rw-rw-r--    ? ubuntu   ubuntu       2387 Aug 22 01:09 acr-delete.log", 2026, 11).unwrap();
-        let d = parse("-rw-rw-r--    ? ubuntu   ubuntu      98135 May 19  2026 CONSUMER.zip", 2026, 11).unwrap();
+        let a = parse(
+            "-rwxrwxr-x    ? ubuntu   ubuntu        920 Sep 22 20:45 1.sh",
+            2026,
+            11,
+        )
+        .unwrap();
+        let b = parse(
+            "drwxrwxr-x    ? ubuntu   ubuntu         88 Oct 21 12:13 Apps",
+            2026,
+            11,
+        )
+        .unwrap();
+        let c = parse(
+            "-rw-rw-r--    ? ubuntu   ubuntu       2387 Aug 22 01:09 acr-delete.log",
+            2026,
+            11,
+        )
+        .unwrap();
+        let d = parse(
+            "-rw-rw-r--    ? ubuntu   ubuntu      98135 May 19  2026 CONSUMER.zip",
+            2026,
+            11,
+        )
+        .unwrap();
         let lines = format(vec![d, b, c, a]);
-        assert_eq!(lines[0], "-rwxrwxr-x ubuntu   ubuntu        920 Sep 22, 2026 20:45 1.sh");
+        assert_eq!(
+            lines[0],
+            "-rwxrwxr-x ubuntu   ubuntu        920 Sep 22, 2026 20:45 1.sh"
+        );
         assert!(lines[1].ends_with("Aug 22, 2026 01:09 acr-delete.log"));
         assert!(lines[2].ends_with("Oct 21, 2026 12:13 Apps"));
         assert!(lines[3].ends_with("May 19, 2026 CONSUMER.zip"));

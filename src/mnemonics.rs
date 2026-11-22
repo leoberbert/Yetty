@@ -173,7 +173,9 @@ fn table() -> &'static HashMap<String, (usize, char)> {
         let mut m = HashMap::new();
         for c in CAPTIONS {
             let Some(at) = c.find('&') else { continue };
-            let Some(ch) = c[at + 1..].chars().next() else { continue };
+            let Some(ch) = c[at + 1..].chars().next() else {
+                continue;
+            };
             let plain = format!("{}{}", &c[..at], &c[at + 1..]).replace("SecureCRT", "Yetty");
             let idx = c[..at].replace("SecureCRT", "Yetty").chars().count();
             m.entry(plain).or_insert((idx, ch.to_ascii_lowercase()));

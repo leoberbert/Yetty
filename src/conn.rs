@@ -68,10 +68,12 @@ pub fn find_program(name: &str) -> Option<String> {
             return Some(p.to_string_lossy().into_owned());
         }
     }
-    let sys = std::path::PathBuf::from(std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".into()))
-        .join("System32")
-        .join("OpenSSH")
-        .join(name);
+    let sys = std::path::PathBuf::from(
+        std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".into()),
+    )
+    .join("System32")
+    .join("OpenSSH")
+    .join(name);
     if sys.is_file() {
         return Some(sys.to_string_lossy().into_owned());
     }
@@ -89,7 +91,11 @@ impl Connection {
             naws: false,
             size: (rows, cols),
         }));
-        let conn = Connection { shared: shared.clone(), rx, protocol: cfg.protocol };
+        let conn = Connection {
+            shared: shared.clone(),
+            rx,
+            protocol: cfg.protocol,
+        };
         let cfg = cfg.clone();
         std::thread::spawn(move || {
             let res = match cfg.protocol {
@@ -155,7 +161,12 @@ impl Connection {
         sh.size = (rows, cols);
         match &sh.ctl {
             Ctl::Pty { master, .. } => {
-                let _ = master.resize(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 });
+                let _ = master.resize(PtySize {
+                    rows,
+                    cols,
+                    pixel_width: 0,
+                    pixel_height: 0,
+                });
             }
             Ctl::Tcp(_) if sh.telnet && sh.naws => {
                 let msg = naws_message(rows, cols);
@@ -255,7 +266,10 @@ fn reader_loop(
                     ctx.request_repaint();
                 }
             }
-            Err(e) if e.kind() == std::io::ErrorKind::TimedOut || e.kind() == std::io::ErrorKind::Interrupted => {
+            Err(e)
+                if e.kind() == std::io::ErrorKind::TimedOut
+                    || e.kind() == std::io::ErrorKind::Interrupted =>
+            {
                 if shared.lock().unwrap().closed {
                     break;
                 }
@@ -282,7 +296,11 @@ fn open_pty(
 ) -> Result<(), String> {
     let mut cmd = match cfg.protocol {
         Protocol::Ssh | Protocol::Sftp => {
-            let exe = if cfg.protocol == Protocol::Ssh { "ssh.exe" } else { "sftp.exe" };
+            let exe = if cfg.protocol == Protocol::Ssh {
+                "ssh.exe"
+            } else {
+                "sftp.exe"
+            };
             // The Windows OpenSSH sftp prints permissions as "-rw-******" (it cannot format the group and other
             // bits); the sftp that comes with Git for Windows prints them in full, as SecureCRT does, so it is
             // preferred for SFTP sessions when it is installed.
@@ -292,7 +310,14 @@ fn open_pty(
                     .filter_map(|v| std::env::var(v).ok())
                     .flat_map(|base| {
                         let b = std::path::PathBuf::from(base);
-                        [b.join("Git").join("usr").join("bin").join("sftp.exe"), b.join("Programs").join("Git").join("usr").join("bin").join("sftp.exe")]
+                        [
+                            b.join("Git").join("usr").join("bin").join("sftp.exe"),
+                            b.join("Programs")
+                                .join("Git")
+                                .join("usr")
+                                .join("bin")
+                                .join("sftp.exe"),
+                        ]
                     })
                     .find(|p| p.is_file())
                     .map(|p| p.to_string_lossy().into_owned())
@@ -309,7 +334,11 @@ fn open_pty(
             let ssh = cfg.protocol == Protocol::Ssh;
             c.arg(if ssh { "-p" } else { "-P" });
             c.arg(cfg.port.to_string());
-            let alive = if cfg.anti_idle_noop_on { cfg.anti_idle_noop_secs } else { cfg.keepalive_secs };
+            let alive = if cfg.anti_idle_noop_on {
+                cfg.anti_idle_noop_secs
+            } else {
+                cfg.keepalive_secs
+            };
             if alive > 0 {
                 c.arg("-o");
                 c.arg(format!("ServerAliveInterval={alive}"));
@@ -351,7 +380,11 @@ fn open_pty(
                 ("KexAlgorithms", &cfg.kex, crate::config::KEX_DEFAULT),
                 ("Ciphers", &cfg.ciphers, crate::config::CIPHERS_DEFAULT),
                 ("MACs", &cfg.macs, crate::config::MACS_DEFAULT),
-                ("HostKeyAlgorithms", &cfg.hostkey_algos, crate::config::HOSTKEY_DEFAULT),
+                (
+                    "HostKeyAlgorithms",
+                    &cfg.hostkey_algos,
+                    crate::config::HOSTKEY_DEFAULT,
+                ),
             ] {
                 if let Some(v) = crate::config::alg_option(list, def) {
                     c.arg("-o");
@@ -360,7 +393,10 @@ fn open_pty(
             }
             if !cfg.known_hosts_file.trim().is_empty() {
                 c.arg("-o");
-                c.arg(format!("UserKnownHostsFile={}", cfg.known_hosts_file.trim()));
+                c.arg(format!(
+                    "UserKnownHostsFile={}",
+                    cfg.known_hosts_file.trim()
+                ));
             }
             match cfg.strict_host_key.as_str() {
                 "accept-new" => {
@@ -386,7 +422,12 @@ fn open_pty(
                     _ => None,
                 })
                 .collect();
-            let default_order = ["publickey", "keyboard-interactive", "password", "gssapi-with-mic"];
+            let default_order = [
+                "publickey",
+                "keyboard-interactive",
+                "password",
+                "gssapi-with-mic",
+            ];
             if !methods.is_empty() && methods != default_order {
                 c.arg("-o");
                 c.arg(format!("PreferredAuthentications={}", methods.join(",")));
@@ -427,7 +468,10 @@ fn open_pty(
                 target = format!("{}:{}", target, cfg.sftp_start_dir.trim());
             }
             c.arg(target);
-            if !ssh && !cfg.sftp_local_dir.trim().is_empty() && std::path::Path::new(cfg.sftp_local_dir.trim()).is_dir() {
+            if !ssh
+                && !cfg.sftp_local_dir.trim().is_empty()
+                && std::path::Path::new(cfg.sftp_local_dir.trim()).is_dir()
+            {
                 c.cwd(cfg.sftp_local_dir.trim());
             }
             if ssh && cfg.remote_command_on && !cfg.remote_command.trim().is_empty() {
@@ -452,10 +496,22 @@ fn open_pty(
             c
         }
     };
-    cmd.env("TERM", if cfg.emulation == "Xterm" && !cfg.xterm256 { "xterm" } else { term_name(&cfg.emulation) });
+    cmd.env(
+        "TERM",
+        if cfg.emulation == "Xterm" && !cfg.xterm256 {
+            "xterm"
+        } else {
+            term_name(&cfg.emulation)
+        },
+    );
     let pty = native_pty_system();
     let pair = pty
-        .openpty(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 })
+        .openpty(PtySize {
+            rows,
+            cols,
+            pixel_width: 0,
+            pixel_height: 0,
+        })
         .map_err(|e| format!("Could not open the terminal: {e}"))?;
     let child = pair
         .slave
@@ -472,11 +528,19 @@ fn open_pty(
             return Ok(());
         }
         sh.writer = Some(writer);
-        sh.ctl = Ctl::Pty { master: pair.master, child: child.clone() };
+        sh.ctl = Ctl::Pty {
+            master: pair.master,
+            child: child.clone(),
+        };
         let (r, c) = sh.size;
         if (r, c) != (rows, cols) {
             if let Ctl::Pty { master, .. } = &sh.ctl {
-                let _ = master.resize(PtySize { rows: r, cols: c, pixel_width: 0, pixel_height: 0 });
+                let _ = master.resize(PtySize {
+                    rows: r,
+                    cols: c,
+                    pixel_width: 0,
+                    pixel_height: 0,
+                });
             }
         }
     }
@@ -558,7 +622,11 @@ fn open_tcp(
     let reader = stream.try_clone().map_err(|e| e.to_string())?;
     if cfg.protocol == Protocol::Rlogin {
         let local = std::env::var("USERNAME").unwrap_or_else(|_| "user".into());
-        let remote = if cfg.username.is_empty() { local.clone() } else { cfg.username.clone() };
+        let remote = if cfg.username.is_empty() {
+            local.clone()
+        } else {
+            cfg.username.clone()
+        };
         let hello = format!("\0{local}\0{remote}\0{}/38400\0", term_name(&cfg.emulation));
         let _ = writer.write_all(hello.as_bytes());
     }
@@ -573,7 +641,13 @@ fn open_tcp(
     }
     let _ = tx.send(ConnEvent::Connected);
     ctx.request_repaint();
-    reader_loop(Box::new(reader), shared.clone(), tx.clone(), ctx.clone(), telnet_filter(cfg));
+    reader_loop(
+        Box::new(reader),
+        shared.clone(),
+        tx.clone(),
+        ctx.clone(),
+        telnet_filter(cfg),
+    );
     Ok(())
 }
 
@@ -605,7 +679,8 @@ fn open_tls(
     let sock = tls.get_ref();
     let _ = sock.set_read_timeout(None);
     let _ = sock.set_write_timeout(None);
-    sock.set_nonblocking(true).map_err(|e| failed(e.to_string()))?;
+    sock.set_nonblocking(true)
+        .map_err(|e| failed(e.to_string()))?;
     let tls: Tls = Arc::new(Mutex::new(tls));
     {
         let mut sh = shared.lock().unwrap();
@@ -618,8 +693,17 @@ fn open_tls(
     }
     let _ = tx.send(ConnEvent::Connected);
     ctx.request_repaint();
-    let reader = TlsReader { tls, shared: shared.clone() };
-    reader_loop(Box::new(reader), shared.clone(), tx.clone(), ctx.clone(), telnet_filter(cfg));
+    let reader = TlsReader {
+        tls,
+        shared: shared.clone(),
+    };
+    reader_loop(
+        Box::new(reader),
+        shared.clone(),
+        tx.clone(),
+        ctx.clone(),
+        telnet_filter(cfg),
+    );
     Ok(())
 }
 
@@ -628,7 +712,9 @@ fn open_tls(
 fn retry_tls<T>(mut op: impl FnMut() -> std::io::Result<T>) -> std::io::Result<T> {
     loop {
         match op() {
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => std::thread::sleep(Duration::from_millis(2)),
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::sleep(Duration::from_millis(2))
+            }
             r => return r,
         }
     }
@@ -689,7 +775,11 @@ fn open_serial(
         Parity::Odd => serialport::Parity::Odd,
         Parity::Even => serialport::Parity::Even,
     };
-    let stop = if cfg.stop_bits == 2 { StopBits::Two } else { StopBits::One };
+    let stop = if cfg.stop_bits == 2 {
+        StopBits::Two
+    } else {
+        StopBits::One
+    };
     let flow = match cfg.flow {
         FlowControl::None => serialport::FlowControl::None,
         FlowControl::XonXoff => serialport::FlowControl::Software,
@@ -715,7 +805,13 @@ fn open_serial(
     }
     let _ = tx.send(ConnEvent::Connected);
     ctx.request_repaint();
-    reader_loop(Box::new(reader), shared.clone(), tx.clone(), ctx.clone(), None);
+    reader_loop(
+        Box::new(reader),
+        shared.clone(),
+        tx.clone(),
+        ctx.clone(),
+        None,
+    );
     Ok(())
 }
 
@@ -750,7 +846,13 @@ struct Telnet {
 
 impl Default for Telnet {
     fn default() -> Self {
-        Telnet { state: 0, sb: Vec::new(), we_will: [false; 256], they_will: [false; 256], ttype: "XTERM".into() }
+        Telnet {
+            state: 0,
+            sb: Vec::new(),
+            we_will: [false; 256],
+            they_will: [false; 256],
+            ttype: "XTERM".into(),
+        }
     }
 }
 

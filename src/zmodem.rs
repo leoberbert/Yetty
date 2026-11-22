@@ -33,7 +33,11 @@ fn crc32(data: &[u8]) -> u32 {
     for &b in data {
         c ^= b as u32;
         for _ in 0..8 {
-            c = if c & 1 != 0 { (c >> 1) ^ 0xedb8_8320 } else { c >> 1 };
+            c = if c & 1 != 0 {
+                (c >> 1) ^ 0xedb8_8320
+            } else {
+                c >> 1
+            };
         }
     }
     !c
@@ -124,9 +128,17 @@ fn unescape(buf: &[u8], mut i: usize) -> Option<(Esc, usize)> {
 
 #[derive(Debug)]
 enum Item {
-    Header { typ: u8, pos: u32, c32: bool },
+    Header {
+        typ: u8,
+        pos: u32,
+        c32: bool,
+    },
     /// a data subpacket; `ok` is the CRC result
-    Sub { data: Vec<u8>, end: u8, ok: bool },
+    Sub {
+        data: Vec<u8>,
+        end: u8,
+        ok: bool,
+    },
 }
 
 fn hexval(c: u8) -> Option<u8> {
@@ -209,7 +221,8 @@ impl Zmodem {
         }
         let mut z = Zmodem::base(true, PathBuf::new());
         for f in &files {
-            let md = std::fs::metadata(f).map_err(|e| format!("Could not read {}: {e}", f.display()))?;
+            let md =
+                std::fs::metadata(f).map_err(|e| format!("Could not read {}: {e}", f.display()))?;
             z.batch_total += md.len() as usize;
         }
         z.files = files;
@@ -254,14 +267,26 @@ impl Zmodem {
 
     fn load_current(&mut self) -> Result<Vec<u8>, String> {
         let f = self.files[self.cur].clone();
-        self.data = std::fs::read(&f).map_err(|e| format!("Could not read {}: {e}", f.display()))?;
-        self.name = f.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "file".into());
+        self.data =
+            std::fs::read(&f).map_err(|e| format!("Could not read {}: {e}", f.display()))?;
+        self.name = f
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "file".into());
         self.total = self.data.len();
         self.pos = 0;
         self.bytes_done = 0;
         let mut info = self.name.as_bytes().to_vec();
         info.push(0);
-        info.extend_from_slice(format!("{} 0 100644 0 {} {}", self.data.len(), self.files.len() - self.cur, self.batch_total - self.sent_total).as_bytes());
+        info.extend_from_slice(
+            format!(
+                "{} 0 100644 0 {} {}",
+                self.data.len(),
+                self.files.len() - self.cur,
+                self.batch_total - self.sent_total
+            )
+            .as_bytes(),
+        );
         info.push(0);
         let mut out = bin_header(ZFILE, [0, 0, 0, 1]);
         out.extend(subpacket(&info, ZCRCW));
@@ -332,7 +357,10 @@ impl Zmodem {
         for _ in 0..32 {
             let end = (self.pos + 1024).min(self.data.len());
             let last = end >= self.data.len();
-            out.extend(subpacket(&self.data[self.pos..end], if last { ZCRCE } else { ZCRCG }));
+            out.extend(subpacket(
+                &self.data[self.pos..end],
+                if last { ZCRCE } else { ZCRCG },
+            ));
             self.pos = end;
             self.bytes_done = self.pos;
             if last {
@@ -444,7 +472,11 @@ impl Zmodem {
                         continue;
                     }
                     let pos = u32::from_le_bytes([raw[1], raw[2], raw[3], raw[4]]);
-                    return Some(Item::Header { typ: raw[0], pos, c32: false });
+                    return Some(Item::Header {
+                        typ: raw[0],
+                        pos,
+                        c32: false,
+                    });
                 }
                 b'A' | b'C' => {
                     let c32 = kind == b'C';
@@ -469,7 +501,11 @@ impl Zmodem {
                         continue;
                     }
                     let pos = u32::from_le_bytes([raw[1], raw[2], raw[3], raw[4]]);
-                    return Some(Item::Header { typ: raw[0], pos, c32 });
+                    return Some(Item::Header {
+                        typ: raw[0],
+                        pos,
+                        c32,
+                    });
                 }
                 _ => {
                     self.rx.drain(..i + 1);
@@ -501,7 +537,9 @@ impl Zmodem {
     }
 
     fn send_item(&mut self, item: Item, out: &mut Vec<u8>) {
-        let Item::Header { typ, pos, .. } = item else { return };
+        let Item::Header { typ, pos, .. } = item else {
+            return;
+        };
         match (self.state, typ) {
             (State::SWaitInit, ZRINIT) | (State::SWaitEofAck, ZRINIT) => {
                 if self.state == State::SWaitEofAck {
@@ -523,7 +561,9 @@ impl Zmodem {
                     }
                 }
             }
-            (State::SWaitPos, ZRPOS) | (State::SData, ZRPOS) | (State::SWaitEofAck, ZRPOS) => self.start_data(pos as usize, out),
+            (State::SWaitPos, ZRPOS) | (State::SData, ZRPOS) | (State::SWaitEofAck, ZRPOS) => {
+                self.start_data(pos as usize, out)
+            }
             (State::SWaitPos, ZSKIP) | (State::SData, ZSKIP) | (State::SWaitEofAck, ZSKIP) => {
                 self.sent_total += self.data.len();
                 self.cur += 1;
@@ -607,10 +647,24 @@ impl Zmodem {
                     }
                     let nul = data.iter().position(|&b| b == 0).unwrap_or(data.len());
                     let raw = String::from_utf8_lossy(&data[..nul]).into_owned();
-                    let base = raw.rsplit(['/', '\\']).next().unwrap_or("").trim().to_string();
-                    self.name = if base.is_empty() || base == "." || base == ".." { "received.bin".into() } else { base };
-                    let rest = String::from_utf8_lossy(data.get(nul + 1..).unwrap_or(&[])).into_owned();
-                    self.total = rest.split_whitespace().next().and_then(|s| s.parse().ok()).unwrap_or(0);
+                    let base = raw
+                        .rsplit(['/', '\\'])
+                        .next()
+                        .unwrap_or("")
+                        .trim()
+                        .to_string();
+                    self.name = if base.is_empty() || base == "." || base == ".." {
+                        "received.bin".into()
+                    } else {
+                        base
+                    };
+                    let rest =
+                        String::from_utf8_lossy(data.get(nul + 1..).unwrap_or(&[])).into_owned();
+                    self.total = rest
+                        .split_whitespace()
+                        .next()
+                        .and_then(|s| s.parse().ok())
+                        .unwrap_or(0);
                     self.out_file.clear();
                     self.bytes_done = 0;
                     self.state = State::RWaitData;
@@ -646,14 +700,23 @@ impl Zmodem {
     }
 
     fn save(&mut self) -> Result<(), String> {
-        std::fs::create_dir_all(&self.folder).map_err(|e| format!("Could not write the file: {e}"))?;
-        std::fs::write(self.folder.join(&self.name), &self.out_file).map_err(|e| format!("Could not write the file: {e}"))?;
+        std::fs::create_dir_all(&self.folder)
+            .map_err(|e| format!("Could not write the file: {e}"))?;
+        std::fs::write(self.folder.join(&self.name), &self.out_file)
+            .map_err(|e| format!("Could not write the file: {e}"))?;
         Ok(())
     }
 
     pub fn is_start_sequence(data: &[u8]) -> bool {
         // "**" ZDLE "B00" is the sender's ZRQINIT
-        data.windows(8).any(|w| w[0] == ZPAD && w[1] == ZPAD && w[2] == ZDLE && w[3] == b'B' && w[4] == b'0' && w[5] == b'0')
+        data.windows(8).any(|w| {
+            w[0] == ZPAD
+                && w[1] == ZPAD
+                && w[2] == ZDLE
+                && w[3] == b'B'
+                && w[4] == b'0'
+                && w[5] == b'0'
+        })
     }
 }
 
@@ -687,7 +750,16 @@ mod tests {
                 break;
             }
         }
-        assert!(tx.done && !tx.failed, "sender: {} {:?} rx {:?} {} pos {}/{}", tx.status, tx.state, rx.state, rx.status, rx.out_file.len(), tx.data.len());
+        assert!(
+            tx.done && !tx.failed,
+            "sender: {} {:?} rx {:?} {} pos {}/{}",
+            tx.status,
+            tx.state,
+            rx.state,
+            rx.status,
+            rx.out_file.len(),
+            tx.data.len()
+        );
         assert!(rx.done && !rx.failed, "receiver: {}", rx.status);
     }
 

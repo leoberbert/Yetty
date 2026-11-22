@@ -38,7 +38,8 @@ impl vt100::Callbacks for TermCb {
         match (i1, c) {
             (None, 'n') if first == 6 => {
                 let (r, col) = screen.cursor_position();
-                self.replies.extend_from_slice(format!("\x1b[{};{}R", r + 1, col + 1).as_bytes());
+                self.replies
+                    .extend_from_slice(format!("\x1b[{};{}R", r + 1, col + 1).as_bytes());
             }
             (None, 'n') if first == 5 => self.replies.extend_from_slice(b"\x1b[0n"),
             (None, 'c') => self.replies.extend_from_slice(b"\x1b[?62;22c"),
@@ -158,14 +159,20 @@ pub struct Session {
 }
 
 impl Session {
-    pub fn new_with_key(id: u64, cfg: SessionConfig, ctx: &egui::Context, global_identity: String) -> Session {
+    pub fn new_with_key(
+        id: u64,
+        cfg: SessionConfig,
+        ctx: &egui::Context,
+        global_identity: String,
+    ) -> Session {
         Session::build(id, cfg, ctx, global_identity)
     }
 
     fn build(id: u64, cfg: SessionConfig, ctx: &egui::Context, global_identity: String) -> Session {
         let rows = cfg.rows.max(2);
         let cols = cfg.cols.max(10);
-        let parser = vt100::Parser::new_with_callbacks(rows, cols, cfg.scrollback, TermCb::default());
+        let parser =
+            vt100::Parser::new_with_callbacks(rows, cols, cfg.scrollback, TermCb::default());
         let mut s = Session {
             id,
             title: cfg.display_name(),
@@ -246,10 +253,16 @@ impl Session {
     fn note_text(&mut self, d: &[u8]) {
         let t = String::from_utf8_lossy(d).into_owned();
         if self.watches_key() {
-            let c: String = t.chars().filter(|c| !c.is_control() || *c == '\n').collect();
+            let c: String = t
+                .chars()
+                .filter(|c| !c.is_control() || *c == '\n')
+                .collect();
             self.scan_debug(&c);
         }
-        let clean: String = t.chars().filter(|c| !c.is_control() || *c == '\n').collect();
+        let clean: String = t
+            .chars()
+            .filter(|c| !c.is_control() || *c == '\n')
+            .collect();
         self.recent.push_str(&clean);
         if self.recent.len() > 8000 {
             let mut cut = self.recent.len() - 4000;
@@ -260,10 +273,24 @@ impl Session {
         }
         // Questions of the ssh program are asked in a window, as in the original.
         if self.prompt_req.is_none()
-            && matches!(self.cfg.protocol, config::Protocol::Ssh | config::Protocol::Sftp)
-            && self.prompt_done.map(|t| t.elapsed() > Duration::from_millis(600)).unwrap_or(true)
+            && matches!(
+                self.cfg.protocol,
+                config::Protocol::Ssh | config::Protocol::Sftp
+            )
+            && self
+                .prompt_done
+                .map(|t| t.elapsed() > Duration::from_millis(600))
+                .unwrap_or(true)
         {
-            let tail: String = clean.trim_end().chars().rev().take(120).collect::<String>().chars().rev().collect();
+            let tail: String = clean
+                .trim_end()
+                .chars()
+                .rev()
+                .take(120)
+                .collect::<String>()
+                .chars()
+                .rev()
+                .collect();
             let lc = tail.to_lowercase();
             if lc.ends_with("(yes/no/[fingerprint])?") || lc.ends_with("(yes/no)?") {
                 let start = self.recent.len().saturating_sub(700);
@@ -271,11 +298,16 @@ impl Session {
                 while !self.recent.is_char_boundary(s) {
                     s += 1;
                 }
-                self.prompt_req = Some(SshPrompt::HostKey { detail: self.recent[s..].trim().to_string() });
+                self.prompt_req = Some(SshPrompt::HostKey {
+                    detail: self.recent[s..].trim().to_string(),
+                });
             } else if self.cfg.saved_password.is_empty()
                 && lc.ends_with("password:")
                 && !lc.contains("[sudo]")
-                && self.connected_at.map(|t| t.elapsed() < Duration::from_secs(90)).unwrap_or(true)
+                && self
+                    .connected_at
+                    .map(|t| t.elapsed() < Duration::from_secs(90))
+                    .unwrap_or(true)
             {
                 self.prompt_req = Some(SshPrompt::Password);
             }
@@ -290,9 +322,20 @@ impl Session {
         }
         // Saved password: answer the "password:" prompt (at most once every few seconds).
         if !self.cfg.saved_password.is_empty() && self.cfg.protocol != config::Protocol::Raw {
-            let tail: String = clean.trim_end().chars().rev().take(40).collect::<String>().chars().rev().collect();
+            let tail: String = clean
+                .trim_end()
+                .chars()
+                .rev()
+                .take(40)
+                .collect::<String>()
+                .chars()
+                .rev()
+                .collect();
             let t = tail.to_lowercase();
-            let due = self.password_sent.map(|t| t.elapsed().as_secs() > 4).unwrap_or(true);
+            let due = self
+                .password_sent
+                .map(|t| t.elapsed().as_secs() > 4)
+                .unwrap_or(true);
             if due && t.ends_with("password:") {
                 self.password_sent = Some(Instant::now());
                 let mut p = config::unprotect(&self.cfg.saved_password);
@@ -304,9 +347,20 @@ impl Session {
         }
         // Stored key passphrase: answer "Enter passphrase for key ...:".
         if !self.cfg.key_passphrase.is_empty() {
-            let tail: String = clean.trim_end().chars().rev().take(80).collect::<String>().chars().rev().collect();
+            let tail: String = clean
+                .trim_end()
+                .chars()
+                .rev()
+                .take(80)
+                .collect::<String>()
+                .chars()
+                .rev()
+                .collect();
             let t = tail.to_lowercase();
-            let due = self.password_sent.map(|t| t.elapsed().as_secs() > 4).unwrap_or(true);
+            let due = self
+                .password_sent
+                .map(|t| t.elapsed().as_secs() > 4)
+                .unwrap_or(true);
             if due && t.contains("passphrase for") && t.ends_with(':') {
                 self.password_sent = Some(Instant::now());
                 let mut p = config::unprotect(&self.cfg.key_passphrase);
@@ -335,7 +389,11 @@ impl Session {
 
     fn apply_modes(&mut self) {
         let mut m = String::new();
-        m.push_str(if self.cfg.line_wrap { "\x1b[?7h" } else { "\x1b[?7l" });
+        m.push_str(if self.cfg.line_wrap {
+            "\x1b[?7h"
+        } else {
+            "\x1b[?7l"
+        });
         if self.cfg.app_cursor_keys {
             m.push_str("\x1b[?1h");
         }
@@ -362,11 +420,17 @@ impl Session {
         self.status = Status::Connecting;
         // "Use global public key setting": the key comes from the global option.
         let mut cfg = self.cfg.clone();
-        if cfg.protocol.is_ssh() && cfg.pubkey_use_global && !self.global_identity.trim().is_empty() {
+        if cfg.protocol.is_ssh() && cfg.pubkey_use_global && !self.global_identity.trim().is_empty()
+        {
             cfg.identity_file = self.global_identity.clone();
         }
         self.xfer = None;
-        self.conn = Some(Connection::open(&cfg, self.rows, self.cols, self.ctx.clone()));
+        self.conn = Some(Connection::open(
+            &cfg,
+            self.rows,
+            self.cols,
+            self.ctx.clone(),
+        ));
         if self.cfg.start_log_on_connect && self.log_file.is_none() {
             if self.cfg.log_prompt {
                 self.log_prompt_due = true;
@@ -436,7 +500,10 @@ impl Session {
         }
         if let Some(c) = &self.conn {
             if self.cfg.encoding == "ISO-8859-1" {
-                let bytes: Vec<u8> = String::from_utf8_lossy(data).chars().map(|c| if (c as u32) < 256 { c as u8 } else { b'?' }).collect();
+                let bytes: Vec<u8> = String::from_utf8_lossy(data)
+                    .chars()
+                    .map(|c| if (c as u32) < 256 { c as u8 } else { b'?' })
+                    .collect();
                 c.send(&bytes);
             } else {
                 c.send(data);
@@ -494,7 +561,10 @@ impl Session {
             };
             let clean = strip_escapes(line);
             let t = clean.trim_start();
-            let is_dbg = t.starts_with("debug1:") || t.starts_with("Authenticated to ") || t.starts_with("Transferred:") || t.starts_with("Bytes per second");
+            let is_dbg = t.starts_with("debug1:")
+                || t.starts_with("Authenticated to ")
+                || t.starts_with("Transferred:")
+                || t.starts_with("Bytes per second");
             if is_dbg {
                 if !line.ends_with('\n') {
                     self.dbg_cont = true;
@@ -516,10 +586,19 @@ impl Session {
             let l = line.trim();
             if let Some(p) = l.find("Offering public key:") {
                 let key = l[p + "Offering public key:".len()..].trim().to_string();
-                let want = std::path::Path::new(self.cfg.identity_file.trim()).file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
-                self.key_offered = if !want.is_empty() && key.to_lowercase().contains(&want) { Some(key) } else { None };
+                let want = std::path::Path::new(self.cfg.identity_file.trim())
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_lowercase())
+                    .unwrap_or_default();
+                self.key_offered = if !want.is_empty() && key.to_lowercase().contains(&want) {
+                    Some(key)
+                } else {
+                    None
+                };
                 self.key_ok = false;
-            } else if l.contains("Server accepts key") || l.contains("Authentication succeeded (publickey)") {
+            } else if l.contains("Server accepts key")
+                || l.contains("Authentication succeeded (publickey)")
+            {
                 self.key_ok = true;
             } else if l.contains("Authentications that can continue:") {
                 if let Some(k) = self.key_offered.take() {
@@ -549,7 +628,10 @@ impl Session {
             }
         }
         while let Some(i) = text.find("Warning: Permanently added") {
-            let end = text[i..].find('\n').map(|k| i + k + 1).unwrap_or(text.len());
+            let end = text[i..]
+                .find('\n')
+                .map(|k| i + k + 1)
+                .unwrap_or(text.len());
             let line = strip_escapes(&text[i..end]).trim().to_string();
             if !line.is_empty() && !self.hidden_lines.contains(&line) {
                 self.hidden_lines.push(line);
@@ -598,7 +680,10 @@ impl Session {
         }
         self.hide_lines_of(&cut);
         out.push_str(rest);
-        let recent_connect = self.connected_at.map(|t| t.elapsed() < Duration::from_secs(90)).unwrap_or(true);
+        let recent_connect = self
+            .connected_at
+            .map(|t| t.elapsed() < Duration::from_secs(90))
+            .unwrap_or(true);
         let tail_start = out.rfind('\n').map(|i| i + 1).unwrap_or(0);
         let tl = out[tail_start..].trim_end().to_lowercase();
         if recent_connect && tl.ends_with("password:") && !tl.contains("[sudo]") {
@@ -698,7 +783,11 @@ impl Session {
         if self.sftp_entries.is_empty() && self.sftp_pending.is_empty() {
             return;
         }
-        if self.sftp_last.map(|t| t.elapsed() < Duration::from_millis(250)).unwrap_or(false) {
+        if self
+            .sftp_last
+            .map(|t| t.elapsed() < Duration::from_millis(250))
+            .unwrap_or(false)
+        {
             return;
         }
         let mut out = String::new();
@@ -716,7 +805,6 @@ impl Session {
         if self.parser.screen().bracketed_paste() {
             self.send_str(&format!("\x1b[200~{p}\x1b[201~"));
         } else if let Some(ms) = delay_ms.filter(|ms| *ms > 0 && p.contains('\r')) {
-
             let mut rest = p;
             while let Some(i) = rest.find('\r') {
                 self.paste_queue.push_back((rest[..=i].to_string(), ms));
@@ -755,12 +843,19 @@ impl Session {
     /// 250 ms. A big backlog goes at once.
     fn jump_due(&self) -> bool {
         let wait = if self.cfg.minimize_drawing { 250 } else { 120 };
-        self.jump_since.map(|t| t.elapsed() >= Duration::from_millis(wait)).unwrap_or(true) || self.jump_pending.len() > 256 * 1024
+        self.jump_since
+            .map(|t| t.elapsed() >= Duration::from_millis(wait))
+            .unwrap_or(true)
+            || self.jump_pending.len() > 256 * 1024
     }
 
     /// Give the screen what the host sent, keeping the scrolled-back view where it is when asked.
     fn feed_screen(&mut self, d: &[u8]) {
-        let keep = if self.cfg.scroll_bottom_output { 0 } else { self.scroll_offset };
+        let keep = if self.cfg.scroll_bottom_output {
+            0
+        } else {
+            self.scroll_offset
+        };
         if self.cfg.scroll_bottom_output {
             self.scroll_offset = 0;
         }
@@ -778,7 +873,12 @@ impl Session {
         if self.cfg.protocol == config::Protocol::Sftp {
             self.sftp_idle_flush();
         }
-        if self.log_file.is_some() && self.log_synced.map(|t| t.elapsed() >= Duration::from_millis(500)).unwrap_or(false) {
+        if self.log_file.is_some()
+            && self
+                .log_synced
+                .map(|t| t.elapsed() >= Duration::from_millis(500))
+                .unwrap_or(false)
+        {
             self.sync_log(false);
         }
         if self.log_file.is_some() && self.cfg.log_midnight && config::now().d != self.log_day {
@@ -795,11 +895,17 @@ impl Session {
         }
         if self.is_connected() {
             // anti-idle: send a string, or a protocol no-op, when nothing was sent for a while
-            if self.cfg.anti_idle_string_on && !self.cfg.anti_idle_string.is_empty() && self.last_sent.elapsed().as_secs() >= self.cfg.anti_idle_secs.max(1) as u64 {
+            if self.cfg.anti_idle_string_on
+                && !self.cfg.anti_idle_string.is_empty()
+                && self.last_sent.elapsed().as_secs() >= self.cfg.anti_idle_secs.max(1) as u64
+            {
                 let s = config::unescape(&self.cfg.anti_idle_string);
                 self.send_str(&s);
             }
-            if self.cfg.anti_idle_noop_on && self.cfg.protocol.is_telnet() && self.last_noop.elapsed().as_secs() >= self.cfg.anti_idle_noop_secs.max(1) as u64 {
+            if self.cfg.anti_idle_noop_on
+                && self.cfg.protocol.is_telnet()
+                && self.last_noop.elapsed().as_secs() >= self.cfg.anti_idle_noop_secs.max(1) as u64
+            {
                 self.last_noop = Instant::now();
                 if let Some(c) = &self.conn {
                     c.send_raw(&[255, 241]);
@@ -847,8 +953,15 @@ impl Session {
                         }
                     }
                     // The host started a Zmodem send (sz): receive it without a menu command.
-                    if self.cfg.zmodem_auto_download && self.xfer.as_ref().map_or(true, |x| x.done) && crate::zmodem::Zmodem::is_start_sequence(&d) {
-                        let dir = if self.cfg.download_dir.trim().is_empty() { config::data_dir().join("downloads") } else { std::path::PathBuf::from(&self.cfg.download_dir) };
+                    if self.cfg.zmodem_auto_download
+                        && self.xfer.as_ref().is_none_or(|x| x.done)
+                        && crate::zmodem::Zmodem::is_start_sequence(&d)
+                    {
+                        let dir = if self.cfg.download_dir.trim().is_empty() {
+                            config::data_dir().join("downloads")
+                        } else {
+                            std::path::PathBuf::from(&self.cfg.download_dir)
+                        };
                         let mut t = crate::transfer::Transfer::new_zmodem_receive(dir);
                         let out = t.feed(&d);
                         if let Some(c) = &self.conn {
@@ -859,14 +972,21 @@ impl Session {
                     }
                     // The ssh program's questions (host key, password) are asked in windows, so their text is kept
                     // off the screen; the logon logic still sees the original text.
-                    let ssh_like = matches!(self.cfg.protocol, config::Protocol::Ssh | config::Protocol::Sftp);
+                    let ssh_like = matches!(
+                        self.cfg.protocol,
+                        config::Protocol::Ssh | config::Protocol::Sftp
+                    );
                     let d = if ssh_like {
                         self.note_text(&d);
                         self.hide_ssh_questions(d)
                     } else {
                         d
                     };
-                    let d = if self.cfg.protocol == config::Protocol::Sftp { self.sftp_filter(d) } else { d };
+                    let d = if self.cfg.protocol == config::Protocol::Sftp {
+                        self.sftp_filter(d)
+                    } else {
+                        d
+                    };
                     if d.is_empty() {
                         continue;
                     }
@@ -877,7 +997,10 @@ impl Session {
                     }
                     self.write_log(&d);
                     let d = if self.cfg.encoding == "ISO-8859-1" {
-                        d.iter().map(|&b| b as char).collect::<String>().into_bytes()
+                        d.iter()
+                            .map(|&b| b as char)
+                            .collect::<String>()
+                            .into_bytes()
                     } else {
                         d
                     };
@@ -930,7 +1053,10 @@ impl Session {
                         if self.cfg.close_on_disconnect {
                             self.close_due = true;
                         } else if self.cfg.auto_reconnect && had_link {
-                            self.reconnect_at = Some(Instant::now() + std::time::Duration::from_secs(self.reconnect_secs));
+                            self.reconnect_at = Some(
+                                Instant::now()
+                                    + std::time::Duration::from_secs(self.reconnect_secs),
+                            );
                         }
                     }
                     self.connected_at = None;
@@ -1050,8 +1176,16 @@ impl Session {
         for v in a.0..=b.0 {
             let line: Vec<char> = self.line_text(v).chars().collect();
             let start = if v == a.0 { a.1 as usize } else { 0 };
-            let end = if v == b.0 { (b.1 as usize + 1).min(line.len()) } else { line.len() };
-            let piece: String = line.get(start.min(line.len())..end.max(start.min(line.len()))).unwrap_or(&[]).iter().collect();
+            let end = if v == b.0 {
+                (b.1 as usize + 1).min(line.len())
+            } else {
+                line.len()
+            };
+            let piece: String = line
+                .get(start.min(line.len())..end.max(start.min(line.len())))
+                .unwrap_or(&[])
+                .iter()
+                .collect();
             out.push_str(piece.trim_end());
             if v != b.0 {
                 out.push_str("\r\n");
@@ -1074,14 +1208,22 @@ impl Session {
         if query.is_empty() {
             return false;
         }
-        let q = if case_sensitive { query.to_string() } else { query.to_lowercase() };
+        let q = if case_sensitive {
+            query.to_string()
+        } else {
+            query.to_lowercase()
+        };
         let n = self.scrollback_len() as i64;
         let first = -n;
         let last = self.rows as i64 - 1;
         let lines: Vec<String> = (first..=last)
             .map(|v| {
                 let t = self.line_text(v);
-                if case_sensitive { t } else { t.to_lowercase() }
+                if case_sensitive {
+                    t
+                } else {
+                    t.to_lowercase()
+                }
             })
             .collect();
         let (cur_line, cur_col) = match self.find_hit {
@@ -1090,7 +1232,11 @@ impl Session {
         };
         let total = lines.len() as i64;
         for step in 0..=total {
-            let v = if backward { cur_line - step } else { cur_line + step };
+            let v = if backward {
+                cur_line - step
+            } else {
+                cur_line + step
+            };
             if v < first || v > last {
                 continue;
             }
@@ -1106,7 +1252,7 @@ impl Session {
                 }
             }
             let pick = if backward {
-                positions.into_iter().filter(|&p| step > 0 || p < cur_col).last()
+                positions.into_iter().rfind(|&p| step > 0 || p < cur_col)
             } else {
                 positions.into_iter().find(|&p| step > 0 || p > cur_col)
             };
@@ -1129,7 +1275,8 @@ impl Session {
     pub fn clear_scrollback(&mut self) {
         let state = self.parser.screen().state_formatted();
         let cb = std::mem::take(self.parser.callbacks_mut());
-        self.parser = vt100::Parser::new_with_callbacks(self.rows, self.cols, self.cfg.scrollback, cb);
+        self.parser =
+            vt100::Parser::new_with_callbacks(self.rows, self.cols, self.cfg.scrollback, cb);
         self.parser.process(&state);
         self.scroll_offset = 0;
         self.selection = None;
@@ -1138,7 +1285,8 @@ impl Session {
 
     pub fn clear_all(&mut self) {
         let cb = std::mem::take(self.parser.callbacks_mut());
-        self.parser = vt100::Parser::new_with_callbacks(self.rows, self.cols, self.cfg.scrollback, cb);
+        self.parser =
+            vt100::Parser::new_with_callbacks(self.rows, self.cols, self.cfg.scrollback, cb);
         self.scroll_offset = 0;
         self.selection = None;
         self.find_hit = None;
@@ -1156,20 +1304,36 @@ impl Session {
             .cfg
             .display_name()
             .chars()
-            .map(|c| if c.is_alphanumeric() || c == '-' || c == '.' || c == '@' { c } else { '_' })
+            .map(|c| {
+                if c.is_alphanumeric() || c == '-' || c == '.' || c == '@' {
+                    c
+                } else {
+                    '_'
+                }
+            })
             .collect();
-        let pattern = if self.cfg.log_file.trim().is_empty() { "%S_%Y-%M-%D_%h%m%s.log" } else { self.cfg.log_file.trim() };
+        let pattern = if self.cfg.log_file.trim().is_empty() {
+            "%S_%Y-%M-%D_%h%m%s.log"
+        } else {
+            self.cfg.log_file.trim()
+        };
         let name = config::expand_log_name(pattern, &self.cfg.host, &session);
         let p = std::path::PathBuf::from(&name);
         if p.is_absolute() {
             name
         } else {
-            config::data_dir().join("logs").join(name).to_string_lossy().into_owned()
+            config::data_dir()
+                .join("logs")
+                .join(name)
+                .to_string_lossy()
+                .into_owned()
         }
     }
 
     pub fn start_log(&mut self, path: Option<String>) -> Result<String, String> {
-        let path = path.filter(|p| !p.trim().is_empty()).unwrap_or_else(|| self.default_log_path());
+        let path = path
+            .filter(|p| !p.trim().is_empty())
+            .unwrap_or_else(|| self.default_log_path());
         if let Some(parent) = std::path::Path::new(&path).parent() {
             let _ = std::fs::create_dir_all(parent);
         }
@@ -1180,7 +1344,9 @@ impl Session {
         } else {
             oo.write(true).truncate(true);
         }
-        let f = oo.open(&path).map_err(|e| format!("Could not create the log file: {e}"))?;
+        let f = oo
+            .open(&path)
+            .map_err(|e| format!("Could not create the log file: {e}"))?;
         self.log_file = Some(f);
         self.log_path = Some(path.clone());
         self.log_paused = false;
@@ -1211,7 +1377,8 @@ impl Session {
         if let Some(parent) = std::path::Path::new(path).parent() {
             let _ = std::fs::create_dir_all(parent);
         }
-        let f = std::fs::File::create(path).map_err(|e| format!("Could not create the file: {e}"))?;
+        let f =
+            std::fs::File::create(path).map_err(|e| format!("Could not create the file: {e}"))?;
         self.capture_file = Some(f);
         Ok(())
     }
@@ -1276,7 +1443,11 @@ impl Session {
             return;
         }
         let custom_line = !self.cfg.log_custom_line.is_empty();
-        let stamped: Vec<u8> = if self.cfg.log_only_custom && (custom_line || !self.cfg.log_custom_connect.is_empty() || !self.cfg.log_custom_disconnect.is_empty()) {
+        let stamped: Vec<u8> = if self.cfg.log_only_custom
+            && (custom_line
+                || !self.cfg.log_custom_connect.is_empty()
+                || !self.cfg.log_custom_disconnect.is_empty())
+        {
             // only the custom text, once per received line
             let mut v = Vec::new();
             if custom_line {
@@ -1295,10 +1466,15 @@ impl Session {
                 if self.log_line_start && b != b'\n' && b != b'\r' {
                     if self.cfg.log_timestamp {
                         let n = config::now();
-                        v.extend_from_slice(format!("[{:02}:{:02}:{:02}.{:03}] ", n.h, n.mi, n.s, n.ms).as_bytes());
+                        v.extend_from_slice(
+                            format!("[{:02}:{:02}:{:02}.{:03}] ", n.h, n.mi, n.s, n.ms).as_bytes(),
+                        );
                     }
                     if custom_line {
-                        v.extend_from_slice(self.expand_custom(&self.cfg.log_custom_line.clone()).as_bytes());
+                        v.extend_from_slice(
+                            self.expand_custom(&self.cfg.log_custom_line.clone())
+                                .as_bytes(),
+                        );
                         v.push(b' ');
                     }
                     self.log_line_start = false;
@@ -1321,7 +1497,11 @@ impl Session {
     /// Windows keeps the size of an open file stale until it is flushed, so a log looked at while it is
     /// written (a file manager, `tail -f`) seemed empty; flush it at most every 300 ms.
     fn sync_log(&mut self, force: bool) {
-        let due = force || self.log_synced.map(|t| t.elapsed() >= Duration::from_millis(300)).unwrap_or(true);
+        let due = force
+            || self
+                .log_synced
+                .map(|t| t.elapsed() >= Duration::from_millis(300))
+                .unwrap_or(true);
         if due {
             if let Some(f) = self.log_file.as_mut() {
                 let _ = f.sync_data();
@@ -1344,7 +1524,14 @@ fn c32(c: Rgb) -> Color32 {
     Color32::from_rgb(c[0], c[1], c[2])
 }
 
-fn resolve(color: vt100::Color, default: Rgb, bold: bool, ansi: bool, truecolor: bool, scheme: Option<[Rgb; 16]>) -> Rgb {
+fn resolve(
+    color: vt100::Color,
+    default: Rgb,
+    bold: bool,
+    ansi: bool,
+    truecolor: bool,
+    scheme: Option<[Rgb; 16]>,
+) -> Rgb {
     if !ansi {
         return default;
     }
@@ -1408,7 +1595,9 @@ pub fn open_url(url: &str, browser: &str) {
     #[cfg(windows)]
     {
         // url.dll takes the URL as it is (cmd's "start" would split it at '&')
-        let _ = std::process::Command::new("rundll32.exe").args(["url.dll,FileProtocolHandler", url]).spawn();
+        let _ = std::process::Command::new("rundll32.exe")
+            .args(["url.dll,FileProtocolHandler", url])
+            .spawn();
     }
     #[cfg(not(windows))]
     {
@@ -1432,12 +1621,24 @@ fn url_at(line: &[char], col: usize) -> Option<String> {
     }
     let lower: Vec<char> = line[a..=b].iter().map(|c| c.to_ascii_lowercase()).collect();
     let rel = col - a;
-    let starts_at = |i: usize, p: &str| p.chars().enumerate().all(|(k, pc)| lower.get(i + k) == Some(&pc));
+    let starts_at = |i: usize, p: &str| {
+        p.chars()
+            .enumerate()
+            .all(|(k, pc)| lower.get(i + k) == Some(&pc))
+    };
     // the last URL start at or before the clicked character
-    let start = (0..=rel).rev().find(|&i| starts_at(i, "http://") || starts_at(i, "https://"))?;
+    let start = (0..=rel)
+        .rev()
+        .find(|&i| starts_at(i, "http://") || starts_at(i, "https://"))?;
     let url: String = line[a + start..=b].iter().collect();
-    let url = url.trim_end_matches(|c: char| ".,;:!?)]".contains(c)).to_string();
-    if start + url.chars().count() <= rel || url.split_once("://").is_none_or(|(_, rest)| rest.is_empty()) {
+    let url = url
+        .trim_end_matches(|c: char| ".,;:!?)]".contains(c))
+        .to_string();
+    if start + url.chars().count() <= rel
+        || url
+            .split_once("://")
+            .is_none_or(|(_, rest)| rest.is_empty())
+    {
         return None;
     }
     Some(url)
@@ -1448,16 +1649,25 @@ const SCROLLBAR_W: f32 = 17.0;
 /// Draw the session's screen in `rect`, handle its keyboard and mouse input.
 pub fn show(ui: &mut egui::Ui, s: &mut Session, opts: &ViewOptions, rect: Rect) -> egui::Response {
     let pad = s.cfg.margin.clamp(0.0, 40.0);
-    let sbw = if s.cfg.show_scrollbar { SCROLLBAR_W } else { 0.0 };
+    let sbw = if s.cfg.show_scrollbar {
+        SCROLLBAR_W
+    } else {
+        0.0
+    };
     let mut font = FontId::monospace(opts.font_size);
-    let (mut cw, mut ch) = ui.ctx().fonts_mut(|f| (f.glyph_width(&font, 'M'), f.row_height(&font)));
+    let (mut cw, mut ch) = ui
+        .ctx()
+        .fonts_mut(|f| (f.glyph_width(&font, 'M'), f.row_height(&font)));
     if s.cfg.scale_font {
         // "Scale the font": the logical rows x columns stay, the font grows or shrinks with the window
         let aw = (rect.width() - 2.0 * pad - sbw).max(50.0);
         let ah = (rect.height() - 2.0 * pad).max(50.0);
-        let k = (aw / (s.cfg.cols.max(10) as f32 * cw.max(1.0))).min(ah / (s.cfg.rows.max(2) as f32 * ch.max(1.0)));
+        let k = (aw / (s.cfg.cols.max(10) as f32 * cw.max(1.0)))
+            .min(ah / (s.cfg.rows.max(2) as f32 * ch.max(1.0)));
         font = FontId::monospace((opts.font_size * k).clamp(6.0, 60.0));
-        let m = ui.ctx().fonts_mut(|f| (f.glyph_width(&font, 'M'), f.row_height(&font)));
+        let m = ui
+            .ctx()
+            .fonts_mut(|f| (f.glyph_width(&font, 'M'), f.row_height(&font)));
         cw = m.0;
         ch = m.1;
     }
@@ -1481,17 +1691,25 @@ pub fn show(ui: &mut egui::Ui, s: &mut Session, opts: &ViewOptions, rect: Rect) 
     // the horizontal scroll bar: a fixed terminal wider than the window scrolls sideways
     let view_w = text_rect.width();
     let full_w = cols as f32 * cw;
-    let need_h = s.cfg.show_hscrollbar && s.cfg.resize_retain && !s.cfg.scale_font && full_w > view_w + 0.5;
+    let need_h =
+        s.cfg.show_hscrollbar && s.cfg.resize_retain && !s.cfg.scale_font && full_w > view_w + 0.5;
     let text_rect = if need_h {
         s.hscroll = s.hscroll.clamp(0.0, full_w - view_w);
-        Rect::from_min_max(Pos2::new(text_rect.min.x - s.hscroll, text_rect.min.y), Pos2::new(text_rect.max.x, text_rect.max.y - HSCROLLBAR_H))
+        Rect::from_min_max(
+            Pos2::new(text_rect.min.x - s.hscroll, text_rect.min.y),
+            Pos2::new(text_rect.max.x, text_rect.max.y - HSCROLLBAR_H),
+        )
     } else {
         s.hscroll = 0.0;
         text_rect
     };
 
     let id = egui::Id::new(("terminal", s.id));
-    let resp = ui.interact(Rect::from_min_max(rect.min, Pos2::new(rect.max.x - sbw, rect.max.y)), id, Sense::click_and_drag());
+    let resp = ui.interact(
+        Rect::from_min_max(rect.min, Pos2::new(rect.max.x - sbw, rect.max.y)),
+        id,
+        Sense::click_and_drag(),
+    );
     if resp.clicked() || resp.drag_started() || resp.secondary_clicked() || resp.middle_clicked() {
         resp.request_focus();
     }
@@ -1503,7 +1721,8 @@ pub fn show(ui: &mut egui::Ui, s: &mut Session, opts: &ViewOptions, rect: Rect) 
     };
     if paste_click {
         s.paste_requested = true;
-        ui.ctx().send_viewport_cmd(egui::ViewportCommand::RequestPaste);
+        ui.ctx()
+            .send_viewport_cmd(egui::ViewportCommand::RequestPaste);
     }
     // a pointer hidden by a key press comes back when it moves
     let pointer_pos = ui.input(|i| i.pointer.hover_pos());
@@ -1515,14 +1734,27 @@ pub fn show(ui: &mut egui::Ui, s: &mut Session, opts: &ViewOptions, rect: Rect) 
         ui.memory_mut(|m| {
             m.set_focus_lock_filter(
                 id,
-                egui::EventFilter { tab: true, horizontal_arrows: true, vertical_arrows: true, escape: true },
+                egui::EventFilter {
+                    tab: true,
+                    horizontal_arrows: true,
+                    vertical_arrows: true,
+                    escape: true,
+                },
             )
         });
     }
 
-    let (fg_def, bg_def) = if s.cfg.use_color_scheme { config::scheme(&s.cfg.color_scheme) } else { ([0xc0, 0xc0, 0xc0], [0, 0, 0]) };
+    let (fg_def, bg_def) = if s.cfg.use_color_scheme {
+        config::scheme(&s.cfg.color_scheme)
+    } else {
+        ([0xc0, 0xc0, 0xc0], [0, 0, 0])
+    };
     // "Color Scheme Overrides Ansi Color": the scheme brings its own 16 ANSI colors
-    let scheme_ov = if s.cfg.use_color_scheme && s.cfg.scheme_overrides_ansi { config::scheme_palette(&s.cfg.color_scheme) } else { None };
+    let scheme_ov = if s.cfg.use_color_scheme && s.cfg.scheme_overrides_ansi {
+        config::scheme_palette(&s.cfg.color_scheme)
+    } else {
+        None
+    };
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 0.0, c32(bg_def));
 
@@ -1545,9 +1777,13 @@ pub fn show(ui: &mut egui::Ui, s: &mut Session, opts: &ViewOptions, rect: Rect) 
         if dy != 0.0 && remote {
             // the program asked for the mouse: the wheel is buttons 4 / 5
             let n = (dy / ch).round() as i32;
-            let sgr = s.parser.screen().mouse_protocol_encoding() == vt100::MouseProtocolEncoding::Sgr;
+            let sgr =
+                s.parser.screen().mouse_protocol_encoding() == vt100::MouseProtocolEncoding::Sgr;
             let at = pointer_pos.unwrap_or(text_rect.min);
-            let (c, r) = ((((at.x - text_rect.min.x) / cw).max(0.0) as u16).min(cols - 1), (((at.y - text_rect.min.y) / ch).max(0.0) as u16).min(rows - 1));
+            let (c, r) = (
+                (((at.x - text_rect.min.x) / cw).max(0.0) as u16).min(cols - 1),
+                (((at.y - text_rect.min.y) / ch).max(0.0) as u16).min(rows - 1),
+            );
             let b: u8 = if n > 0 { 64 } else { 65 };
             for _ in 0..n.unsigned_abs().min(10) {
                 if let Some(seq) = mouse_seq(b, c, r, true, sgr) {
@@ -1573,22 +1809,33 @@ pub fn show(ui: &mut egui::Ui, s: &mut Session, opts: &ViewOptions, rect: Rect) 
         }
     }
     let to_cell = |p: Pos2, off: usize| -> VPos {
-        let c = ((p.x - text_rect.min.x) / cw).floor().clamp(0.0, (cols - 1) as f32) as u16;
-        let r = ((p.y - text_rect.min.y) / ch).floor().clamp(0.0, (rows - 1) as f32) as i64;
+        let c = ((p.x - text_rect.min.x) / cw)
+            .floor()
+            .clamp(0.0, (cols - 1) as f32) as u16;
+        let r = ((p.y - text_rect.min.y) / ch)
+            .floor()
+            .clamp(0.0, (rows - 1) as f32) as i64;
         (r - off as i64, c)
     };
     // The drag only "starts" after the pointer has moved a few pixels, so the anchor is where the
     // button went down, not where the drag was noticed (that lost the first characters of a quick drag).
     if local && resp.drag_started_by(egui::PointerButton::Primary) {
-        let origin = ui.input(|i| i.pointer.press_origin()).or_else(|| resp.interact_pointer_pos());
+        let origin = ui
+            .input(|i| i.pointer.press_origin())
+            .or_else(|| resp.interact_pointer_pos());
         if let Some(p) = origin {
             let c = to_cell(p, s.scroll_offset);
             s.selection = Some((c, c));
             s.find_hit = None;
         }
     }
-    if local && (resp.dragged_by(egui::PointerButton::Primary) || resp.drag_stopped_by(egui::PointerButton::Primary)) {
-        let now = ui.input(|i| i.pointer.latest_pos()).or_else(|| resp.interact_pointer_pos());
+    if local
+        && (resp.dragged_by(egui::PointerButton::Primary)
+            || resp.drag_stopped_by(egui::PointerButton::Primary))
+    {
+        let now = ui
+            .input(|i| i.pointer.latest_pos())
+            .or_else(|| resp.interact_pointer_pos());
         if let (Some(p), Some((a, _))) = (now, s.selection) {
             // auto-scroll when dragging beyond the edges
             if p.y < text_rect.min.y && s.scroll_offset < sb_len {
@@ -1620,7 +1867,11 @@ pub fn show(ui: &mut egui::Ui, s: &mut Session, opts: &ViewOptions, rect: Rect) 
             let (v, _) = to_cell(p, s.scroll_offset);
             let line = ((v, 0), (v, cols - 1));
             s.selection = Some(line);
-            s.line_sel = if opts.triple_click_newline { Some(line) } else { None };
+            s.line_sel = if opts.triple_click_newline {
+                Some(line)
+            } else {
+                None
+            };
             s.find_hit = None;
             if opts.copy_on_select {
                 if let Some(t) = s.selected_text() {
@@ -1634,7 +1885,13 @@ pub fn show(ui: &mut egui::Ui, s: &mut Session, opts: &ViewOptions, rect: Rect) 
             let line: Vec<char> = s.line_text(v).chars().collect();
             let delims = s.cfg.word_delims.clone();
             let custom = s.cfg.word_delims_on;
-            let is_word = |ch: char| if custom { !ch.is_whitespace() && !delims.contains(ch) } else { ch.is_alphanumeric() || "-_./@:~".contains(ch) };
+            let is_word = |ch: char| {
+                if custom {
+                    !ch.is_whitespace() && !delims.contains(ch)
+                } else {
+                    ch.is_alphanumeric() || "-_./@:~".contains(ch)
+                }
+            };
             let c = c as usize;
             if c < line.len() && is_word(line[c]) {
                 let mut a = c;
@@ -1657,15 +1914,25 @@ pub fn show(ui: &mut egui::Ui, s: &mut Session, opts: &ViewOptions, rect: Rect) 
         s.selection = None;
         if let Some(url) = &url_under {
             open_url(url, opts.browser);
-        } else if s.cfg.cursor_click && s.scroll_offset == 0 && !s.parser.screen().alternate_screen() {
+        } else if s.cfg.cursor_click
+            && s.scroll_offset == 0
+            && !s.parser.screen().alternate_screen()
+        {
             // "Position cursor on click": arrow keys carry the cursor to the clicked column of its own line
             if let Some(p) = resp.interact_pointer_pos() {
                 let (v, c) = to_cell(p, 0);
                 let (cur_row, cur_col) = s.parser.screen().cursor_position();
                 if v == cur_row as i64 && c != cur_col {
                     let letter = if c > cur_col { 'C' } else { 'D' };
-                    let one = if s.parser.screen().application_cursor() { format!("\x1bO{letter}") } else { format!("\x1b[{letter}") };
-                    s.send(one.repeat((c as i32 - cur_col as i32).unsigned_abs() as usize).as_bytes());
+                    let one = if s.parser.screen().application_cursor() {
+                        format!("\x1bO{letter}")
+                    } else {
+                        format!("\x1b[{letter}")
+                    };
+                    s.send(
+                        one.repeat((c as i32 - cur_col as i32).unsigned_abs() as usize)
+                            .as_bytes(),
+                    );
                 }
             }
         }
@@ -1675,12 +1942,23 @@ pub fn show(ui: &mut egui::Ui, s: &mut Session, opts: &ViewOptions, rect: Rect) 
     if focused && opts.accept_input {
         let events = ui.input(|i| i.events.clone());
         // "Hide mouse pointer on keypress": until the pointer moves
-        if opts.hide_pointer && events.iter().any(|e| matches!(e, egui::Event::Text(_) | egui::Event::Key { pressed: true, .. })) {
+        if opts.hide_pointer
+            && events.iter().any(|e| {
+                matches!(
+                    e,
+                    egui::Event::Text(_) | egui::Event::Key { pressed: true, .. }
+                )
+            })
+        {
             if let Some(p) = pointer_pos.filter(|p| rect.contains(*p)) {
                 s.pointer_hidden_at = Some(p);
             }
         }
-        let app_cursor = if s.cfg.cursor_switching { s.parser.screen().application_cursor() } else { s.cfg.app_cursor_keys };
+        let app_cursor = if s.cfg.cursor_switching {
+            s.parser.screen().application_cursor()
+        } else {
+            s.cfg.app_cursor_keys
+        };
         let insert_down = ui.input(|i| i.key_down(egui::Key::Insert));
         for ev in events {
             match ev {
@@ -1709,19 +1987,34 @@ pub fn show(ui: &mut egui::Ui, s: &mut Session, opts: &ViewOptions, rect: Rect) 
                         // "Paste as Quotation": the quotation character(s) before the text, and after it too
                         // with "Insert pasted text between"
                         s.paste_quote = false;
-                        p = if opts.quote_between { format!("{q}{p}{q}", q = opts.quote_chars) } else { format!("{}{p}", opts.quote_chars) };
+                        p = if opts.quote_between {
+                            format!("{q}{p}{q}", q = opts.quote_chars)
+                        } else {
+                            format!("{}{p}", opts.quote_chars)
+                        };
                     }
                     let newlines = p.matches('\r').count() as u32;
-                    if opts.confirm_paste && newlines >= opts.paste_prompt_lines.max(1) && s.pending_paste.is_none() {
+                    if opts.confirm_paste
+                        && newlines >= opts.paste_prompt_lines.max(1)
+                        && s.pending_paste.is_none()
+                    {
                         s.pending_paste = Some(p); // the "Confirm Multi-line Paste" window decides
                     } else {
                         s.paste_text(&p, opts.paste_delay);
                     }
                 }
-                egui::Event::Key { key, physical_key, pressed: true, modifiers, .. } => {
+                egui::Event::Key {
+                    key,
+                    physical_key,
+                    pressed: true,
+                    modifiers,
+                    ..
+                } => {
                     // AltGr (Ctrl+Alt): type the character the keyboard layout gives with it.
                     if modifiers.ctrl && modifiers.alt {
-                        let ch = physical_key.and_then(|k| altgr_char(k, modifiers.shift)).or_else(|| altgr_char(key, modifiers.shift));
+                        let ch = physical_key
+                            .and_then(|k| altgr_char(k, modifiers.shift))
+                            .or_else(|| altgr_char(key, modifiers.shift));
                         if let Some(c) = ch {
                             s.send_str(&c.to_string());
                             continue;
@@ -1729,7 +2022,11 @@ pub fn show(ui: &mut egui::Ui, s: &mut Session, opts: &ViewOptions, rect: Rect) 
                     }
                     if modifiers.shift && matches!(key, egui::Key::PageUp | egui::Key::PageDown) {
                         let page = rows as i64 - 1;
-                        let delta = if key == egui::Key::PageUp { page } else { -page };
+                        let delta = if key == egui::Key::PageUp {
+                            page
+                        } else {
+                            -page
+                        };
                         let new = (s.scroll_offset as i64 + delta).clamp(0, sb_len as i64) as usize;
                         s.scroll_to(new);
                         continue;
@@ -1747,11 +2044,21 @@ pub fn show(ui: &mut egui::Ui, s: &mut Session, opts: &ViewOptions, rect: Rect) 
                             combo.push_str("Shift+");
                         }
                         combo.push_str(key.name());
-                        let hit = s.cfg.mapped_keys.iter().find(|m| m.key.trim().eq_ignore_ascii_case(&combo)).map(|m| (m.func.clone(), m.send.clone()));
+                        let hit = s
+                            .cfg
+                            .mapped_keys
+                            .iter()
+                            .find(|m| m.key.trim().eq_ignore_ascii_case(&combo))
+                            .map(|m| (m.func.clone(), m.send.clone()));
                         if let Some((func, arg)) = hit {
                             match func.as_str() {
                                 "Send Hex String" => {
-                                    let bytes: Vec<u8> = arg.split_whitespace().filter_map(|h| u8::from_str_radix(h.trim_start_matches("0x"), 16).ok()).collect();
+                                    let bytes: Vec<u8> = arg
+                                        .split_whitespace()
+                                        .filter_map(|h| {
+                                            u8::from_str_radix(h.trim_start_matches("0x"), 16).ok()
+                                        })
+                                        .collect();
                                     s.send(&bytes);
                                 }
                                 "Copy" => {
@@ -1759,7 +2066,9 @@ pub fn show(ui: &mut egui::Ui, s: &mut Session, opts: &ViewOptions, rect: Rect) 
                                         ui.ctx().copy_text(t);
                                     }
                                 }
-                                "Paste" => ui.ctx().send_viewport_cmd(egui::ViewportCommand::RequestPaste),
+                                "Paste" => ui
+                                    .ctx()
+                                    .send_viewport_cmd(egui::ViewportCommand::RequestPaste),
                                 "Clear Screen" => s.clear_screen(),
                                 "Send Break" => s.send_break(),
                                 "Disconnect" => s.disconnect(),
@@ -1774,7 +2083,11 @@ pub fn show(ui: &mut egui::Ui, s: &mut Session, opts: &ViewOptions, rect: Rect) 
                             let name = key.name();
                             let mut chars = name.chars();
                             if let (Some(c), None) = (chars.next(), chars.next()) {
-                                let c = if modifiers.shift { c.to_ascii_uppercase() } else { c.to_ascii_lowercase() };
+                                let c = if modifiers.shift {
+                                    c.to_ascii_uppercase()
+                                } else {
+                                    c.to_ascii_lowercase()
+                                };
                                 if s.cfg.meta_8bit && c.is_ascii() {
                                     s.send(&[(c as u8) | 0x80]);
                                 } else {
@@ -1785,7 +2098,17 @@ pub fn show(ui: &mut egui::Ui, s: &mut Session, opts: &ViewOptions, rect: Rect) 
                         continue; // other Alt shortcuts belong to the menus
                     }
                     let alt_kb = alt_function_key(&s.cfg.alt_keyboard, key, modifiers);
-                    if let Some(bytes) = alt_kb.or_else(|| key_bytes(key, modifiers, app_cursor, s.cfg.backspace_bs, &s.cfg.enter_sends, s.cfg.delete_sends_del, s.cfg.home_end_tilde)) {
+                    if let Some(bytes) = alt_kb.or_else(|| {
+                        key_bytes(
+                            key,
+                            modifiers,
+                            app_cursor,
+                            s.cfg.backspace_bs,
+                            &s.cfg.enter_sends,
+                            s.cfg.delete_sends_del,
+                            s.cfg.home_end_tilde,
+                        )
+                    }) {
                         s.send(&bytes);
                     }
                 }
@@ -1795,12 +2118,17 @@ pub fn show(ui: &mut egui::Ui, s: &mut Session, opts: &ViewOptions, rect: Rect) 
     }
 
     // ----- screen -------------------------------------------------------------
-    let blink_on = !s.cfg.blinking_cursor || !focused || (ui.input(|i| i.time) * 1000.0 / 530.0) as i64 % 2 == 0;
+    let blink_on = !s.cfg.blinking_cursor
+        || !focused
+        || (ui.input(|i| i.time) * 1000.0 / 530.0) as i64 % 2 == 0;
     if s.cfg.blinking_cursor && focused {
-        ui.ctx().request_repaint_after(std::time::Duration::from_millis(265));
+        ui.ctx()
+            .request_repaint_after(std::time::Duration::from_millis(265));
     }
     let off = s.scroll_offset as i64;
-    let sel = s.selection.map(|(a, b)| if a <= b { (a, b) } else { (b, a) });
+    let sel = s
+        .selection
+        .map(|(a, b)| if a <= b { (a, b) } else { (b, a) });
     let in_sel = |v: i64, c: u16| -> bool {
         match sel {
             Some((a, b)) => (v, c) >= a && (v, c) <= b,
@@ -1808,7 +2136,17 @@ pub fn show(ui: &mut egui::Ui, s: &mut Session, opts: &ViewOptions, rect: Rect) 
         }
     };
     let kw: Vec<String> = if opts.highlight && s.cfg.keyword_highlighting {
-        opts.keywords.iter().filter(|k| !k.trim().is_empty()).map(|k| if s.cfg.highlight_case { k.clone() } else { k.to_lowercase() }).collect()
+        opts.keywords
+            .iter()
+            .filter(|k| !k.trim().is_empty())
+            .map(|k| {
+                if s.cfg.highlight_case {
+                    k.clone()
+                } else {
+                    k.to_lowercase()
+                }
+            })
+            .collect()
     } else {
         Vec::new()
     };
@@ -1831,7 +2169,11 @@ pub fn show(ui: &mut egui::Ui, s: &mut Session, opts: &ViewOptions, rect: Rect) 
                 if let Some(cell) = screen.cell(r, c) {
                     let t = cell.contents();
                     let t = if t.is_empty() { " " } else { t };
-                    let t = if kw_case { t.to_string() } else { t.to_lowercase() };
+                    let t = if kw_case {
+                        t.to_string()
+                    } else {
+                        t.to_lowercase()
+                    };
                     for ch in t.chars() {
                         line.push(ch);
                         map.push(c);
@@ -1846,7 +2188,11 @@ pub fn show(ui: &mut egui::Ui, s: &mut Session, opts: &ViewOptions, rect: Rect) 
                 }
                 for i in 0..=(chars.len() - kc.len()) {
                     if chars[i..i + kc.len()] == kc[..] {
-                        let (a, b) = if kw_line { (0, chars.len()) } else { (i, i + kc.len()) };
+                        let (a, b) = if kw_line {
+                            (0, chars.len())
+                        } else {
+                            (i, i + kc.len())
+                        };
                         for j in a..b {
                             if let Some(&c) = map.get(j) {
                                 kw_cols[c as usize] = true;
@@ -1864,8 +2210,22 @@ pub fn show(ui: &mut egui::Ui, s: &mut Session, opts: &ViewOptions, rect: Rect) 
                 continue;
             }
             let width = if cell.is_wide() { 2 } else { 1 };
-            let mut fg = resolve(cell.fgcolor(), fg_def, cell.bold(), s.cfg.ansi_color, truecolor, scheme_ov);
-            let mut bg = resolve(cell.bgcolor(), bg_def, false, s.cfg.ansi_color, truecolor, scheme_ov);
+            let mut fg = resolve(
+                cell.fgcolor(),
+                fg_def,
+                cell.bold(),
+                s.cfg.ansi_color,
+                truecolor,
+                scheme_ov,
+            );
+            let mut bg = resolve(
+                cell.bgcolor(),
+                bg_def,
+                false,
+                s.cfg.ansi_color,
+                truecolor,
+                scheme_ov,
+            );
             let mut force_bold = false;
             if cell.inverse() {
                 std::mem::swap(&mut fg, &mut bg);
@@ -1899,14 +2259,29 @@ pub fn show(ui: &mut egui::Ui, s: &mut Session, opts: &ViewOptions, rect: Rect) 
             }
             let t = cell.contents();
             if !t.is_empty() && t != " " {
-                painter.text(Pos2::new(x, y), egui::Align2::LEFT_TOP, t, font.clone(), fgc);
+                painter.text(
+                    Pos2::new(x, y),
+                    egui::Align2::LEFT_TOP,
+                    t,
+                    font.clone(),
+                    fgc,
+                );
                 if cell.bold() || force_bold {
-                    painter.text(Pos2::new(x + 0.6, y), egui::Align2::LEFT_TOP, t, font.clone(), fgc);
+                    painter.text(
+                        Pos2::new(x + 0.6, y),
+                        egui::Align2::LEFT_TOP,
+                        t,
+                        font.clone(),
+                        fgc,
+                    );
                 }
             }
             if cell.underline() {
                 painter.line_segment(
-                    [Pos2::new(x, y + ch - 1.5), Pos2::new(x + cw * width as f32, y + ch - 1.5)],
+                    [
+                        Pos2::new(x, y + ch - 1.5),
+                        Pos2::new(x + cw * width as f32, y + ch - 1.5),
+                    ],
                     Stroke::new(1.0, fgc),
                 );
             }
@@ -1923,7 +2298,12 @@ pub fn show(ui: &mut egui::Ui, s: &mut Session, opts: &ViewOptions, rect: Rect) 
             let cur_rect = Rect::from_min_size(Pos2::new(x, y), Vec2::new(cw, ch));
             let cur_color = c32(fg_def);
             if !focused {
-                painter.rect_stroke(cur_rect.shrink(0.5), 0.0, Stroke::new(1.0, cur_color), egui::StrokeKind::Inside);
+                painter.rect_stroke(
+                    cur_rect.shrink(0.5),
+                    0.0,
+                    Stroke::new(1.0, cur_color),
+                    egui::StrokeKind::Inside,
+                );
             } else if blink_on {
                 match s.cfg.cursor_style {
                     CursorStyle::Block => {
@@ -1931,7 +2311,13 @@ pub fn show(ui: &mut egui::Ui, s: &mut Session, opts: &ViewOptions, rect: Rect) 
                         if let Some(cell) = screen.cell(cr, cc) {
                             let t = cell.contents();
                             if !t.is_empty() {
-                                painter.text(Pos2::new(x, y), egui::Align2::LEFT_TOP, t, font.clone(), c32(bg_def));
+                                painter.text(
+                                    Pos2::new(x, y),
+                                    egui::Align2::LEFT_TOP,
+                                    t,
+                                    font.clone(),
+                                    c32(bg_def),
+                                );
                             }
                         }
                     }
@@ -1973,14 +2359,36 @@ pub fn show(ui: &mut egui::Ui, s: &mut Session, opts: &ViewOptions, rect: Rect) 
         egui::CursorIcon::Text
     };
     if need_h {
-        let track = Rect::from_min_max(Pos2::new(rect.min.x, rect.max.y - HSCROLLBAR_H), Pos2::new(rect.max.x - sbw, rect.max.y));
+        let track = Rect::from_min_max(
+            Pos2::new(rect.min.x, rect.max.y - HSCROLLBAR_H),
+            Pos2::new(rect.max.x - sbw, rect.max.y),
+        );
         let hb = ui.interact(track, id.with("hscrollbar"), Sense::click_and_drag());
         let dark = (bg_def[0] as u32 + bg_def[1] as u32 + bg_def[2] as u32) < 384;
-        painter.rect_filled(track, 0.0, if dark { Color32::from_gray(45) } else { Color32::from_gray(230) });
+        painter.rect_filled(
+            track,
+            0.0,
+            if dark {
+                Color32::from_gray(45)
+            } else {
+                Color32::from_gray(230)
+            },
+        );
         let thumb_w = (track.width() * view_w / full_w).clamp(20.0, track.width());
         let movable = (track.width() - thumb_w).max(1.0);
         let thumb_x = track.min.x + movable * (s.hscroll / (full_w - view_w).max(1.0));
-        painter.rect_filled(Rect::from_min_size(Pos2::new(thumb_x, track.min.y + 3.0), Vec2::new(thumb_w, HSCROLLBAR_H - 6.0)), 4.0, if dark { Color32::from_gray(110) } else { Color32::from_gray(160) });
+        painter.rect_filled(
+            Rect::from_min_size(
+                Pos2::new(thumb_x, track.min.y + 3.0),
+                Vec2::new(thumb_w, HSCROLLBAR_H - 6.0),
+            ),
+            4.0,
+            if dark {
+                Color32::from_gray(110)
+            } else {
+                Color32::from_gray(160)
+            },
+        );
         if hb.dragged() || hb.clicked() {
             if let Some(p) = hb.interact_pointer_pos() {
                 let f = ((p.x - track.min.x - thumb_w / 2.0) / movable).clamp(0.0, 1.0);
@@ -1998,26 +2406,69 @@ pub fn show(ui: &mut egui::Ui, s: &mut Session, opts: &ViewOptions, rect: Rect) 
     let full_track = Rect::from_min_max(Pos2::new(rect.max.x - SCROLLBAR_W, rect.min.y), rect.max);
     let sb_resp = ui.interact(full_track, id.with("scrollbar"), Sense::click_and_drag());
     let dark_bg = (bg_def[0] as u32 + bg_def[1] as u32 + bg_def[2] as u32) < 384;
-    let track_col = if dark_bg { Color32::from_gray(45) } else { Color32::from_gray(230) };
-    let thumb_col = if dark_bg { Color32::from_gray(78) } else { Color32::from_gray(160) };
-    let arrow_col = if dark_bg { Color32::from_gray(120) } else { Color32::from_gray(100) };
+    let track_col = if dark_bg {
+        Color32::from_gray(45)
+    } else {
+        Color32::from_gray(230)
+    };
+    let thumb_col = if dark_bg {
+        Color32::from_gray(78)
+    } else {
+        Color32::from_gray(160)
+    };
+    let arrow_col = if dark_bg {
+        Color32::from_gray(120)
+    } else {
+        Color32::from_gray(100)
+    };
     painter.rect_filled(full_track, 0.0, track_col);
     // arrow buttons at both ends, as the original's scroll bar; the thumb runs between them
     let arrow_h = SCROLLBAR_W;
     let track = Rect::from_min_max(
         Pos2::new(full_track.min.x, full_track.min.y + arrow_h),
-        Pos2::new(full_track.max.x, (full_track.max.y - arrow_h).max(full_track.min.y + arrow_h)),
+        Pos2::new(
+            full_track.max.x,
+            (full_track.max.y - arrow_h).max(full_track.min.y + arrow_h),
+        ),
     );
     let cx = full_track.center().x;
-    let (up_y, down_y) = (full_track.min.y + arrow_h / 2.0, full_track.max.y - arrow_h / 2.0);
-    painter.add(egui::Shape::convex_polygon(vec![Pos2::new(cx - 4.0, up_y + 2.0), Pos2::new(cx + 4.0, up_y + 2.0), Pos2::new(cx, up_y - 2.0)], arrow_col, egui::Stroke::NONE));
-    painter.add(egui::Shape::convex_polygon(vec![Pos2::new(cx - 4.0, down_y - 2.0), Pos2::new(cx + 4.0, down_y - 2.0), Pos2::new(cx, down_y + 2.0)], arrow_col, egui::Stroke::NONE));
+    let (up_y, down_y) = (
+        full_track.min.y + arrow_h / 2.0,
+        full_track.max.y - arrow_h / 2.0,
+    );
+    painter.add(egui::Shape::convex_polygon(
+        vec![
+            Pos2::new(cx - 4.0, up_y + 2.0),
+            Pos2::new(cx + 4.0, up_y + 2.0),
+            Pos2::new(cx, up_y - 2.0),
+        ],
+        arrow_col,
+        egui::Stroke::NONE,
+    ));
+    painter.add(egui::Shape::convex_polygon(
+        vec![
+            Pos2::new(cx - 4.0, down_y - 2.0),
+            Pos2::new(cx + 4.0, down_y - 2.0),
+            Pos2::new(cx, down_y + 2.0),
+        ],
+        arrow_col,
+        egui::Stroke::NONE,
+    ));
     let total = (sb_len + rows as usize) as f32;
-    let thumb_h = (track.height() * rows as f32 / total).max(20.0).min(track.height());
+    let thumb_h = (track.height() * rows as f32 / total)
+        .max(20.0)
+        .min(track.height());
     let movable = track.height() - thumb_h;
-    let frac_from_bottom = if sb_len == 0 { 0.0 } else { s.scroll_offset as f32 / sb_len as f32 };
+    let frac_from_bottom = if sb_len == 0 {
+        0.0
+    } else {
+        s.scroll_offset as f32 / sb_len as f32
+    };
     let thumb_top = track.min.y + movable * (1.0 - frac_from_bottom);
-    let thumb = Rect::from_min_size(Pos2::new(track.min.x + 4.0, thumb_top), Vec2::new(SCROLLBAR_W - 8.0, thumb_h));
+    let thumb = Rect::from_min_size(
+        Pos2::new(track.min.x + 4.0, thumb_top),
+        Vec2::new(SCROLLBAR_W - 8.0, thumb_h),
+    );
     painter.rect_filled(thumb, 0.0, thumb_col);
     if let Some(p) = sb_resp.interact_pointer_pos() {
         if sb_resp.clicked() && p.y < track.min.y {
@@ -2046,7 +2497,10 @@ fn alt_function_key(kind: &str, key: egui::Key, m: egui::Modifiers) -> Option<Ve
     if m.ctrl || m.alt || m.shift {
         return None;
     }
-    let n = [F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12].iter().position(|&k| k == key)? + 1;
+    let n = [F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12]
+        .iter()
+        .position(|&k| k == key)?
+        + 1;
     // ESC [ n ~ for F1..F12 as the VT220 sends them
     const TILDE: [u8; 12] = [11, 12, 13, 14, 15, 17, 18, 19, 20, 21, 23, 24];
     let tilde = |code: u8| Some(format!("\x1b[{code}~").into_bytes());
@@ -2085,28 +2539,62 @@ fn alt_function_key(kind: &str, key: egui::Key, m: egui::Modifiers) -> Option<Ve
 /// cannot address cells past 222.
 fn mouse_seq(button: u8, c: u16, r: u16, press: bool, sgr: bool) -> Option<Vec<u8>> {
     if sgr {
-        Some(format!("\x1b[<{};{};{}{}", button, c + 1, r + 1, if press { 'M' } else { 'm' }).into_bytes())
-    } else if c + 1 <= 222 && r + 1 <= 222 {
-        Some(vec![0x1b, b'[', b'M', 32 + button, 32 + (c + 1) as u8, 32 + (r + 1) as u8])
+        Some(
+            format!(
+                "\x1b[<{};{};{}{}",
+                button,
+                c + 1,
+                r + 1,
+                if press { 'M' } else { 'm' }
+            )
+            .into_bytes(),
+        )
+    } else if c < 222 && r < 222 {
+        Some(vec![
+            0x1b,
+            b'[',
+            b'M',
+            32 + button,
+            32 + (c + 1) as u8,
+            32 + (r + 1) as u8,
+        ])
     } else {
         None
     }
 }
 
 /// Tell a remote program about the mouse (xterm mouse reporting: X10 / normal / button-motion / any-motion, default or SGR).
-fn report_mouse(ui: &egui::Ui, s: &mut Session, text_rect: Rect, cw: f32, ch: f32, cols: u16, rows: u16) {
+fn report_mouse(
+    ui: &egui::Ui,
+    s: &mut Session,
+    text_rect: Rect,
+    cw: f32,
+    ch: f32,
+    cols: u16,
+    rows: u16,
+) {
     use vt100::{MouseProtocolEncoding, MouseProtocolMode};
     let mode = s.parser.screen().mouse_protocol_mode();
     let sgr = s.parser.screen().mouse_protocol_encoding() == MouseProtocolEncoding::Sgr;
     let cell = |p: Pos2| -> (u16, u16) {
         (
-            ((p.x - text_rect.min.x) / cw).floor().clamp(0.0, (cols - 1) as f32) as u16,
-            ((p.y - text_rect.min.y) / ch).floor().clamp(0.0, (rows - 1) as f32) as u16,
+            ((p.x - text_rect.min.x) / cw)
+                .floor()
+                .clamp(0.0, (cols - 1) as f32) as u16,
+            ((p.y - text_rect.min.y) / ch)
+                .floor()
+                .clamp(0.0, (rows - 1) as f32) as u16,
         )
     };
     let events = ui.input(|i| i.events.clone());
     let mut out: Vec<u8> = Vec::new();
-    let push = |s: &mut Session, button: u8, mods: egui::Modifiers, c: u16, r: u16, press: bool, out: &mut Vec<u8>| {
+    let push = |s: &mut Session,
+                button: u8,
+                mods: egui::Modifiers,
+                c: u16,
+                r: u16,
+                press: bool,
+                out: &mut Vec<u8>| {
         let mut b = button;
         if mods.shift {
             b += 4;
@@ -2124,7 +2612,12 @@ fn report_mouse(ui: &egui::Ui, s: &mut Session, text_rect: Rect, cw: f32, ch: f3
     };
     for ev in events {
         match ev {
-            egui::Event::PointerButton { pos, button, pressed, modifiers } => {
+            egui::Event::PointerButton {
+                pos,
+                button,
+                pressed,
+                modifiers,
+            } => {
                 let b = match button {
                     egui::PointerButton::Primary => 0,
                     egui::PointerButton::Middle => 1,
@@ -2148,7 +2641,8 @@ fn report_mouse(ui: &egui::Ui, s: &mut Session, text_rect: Rect, cw: f32, ch: f3
                 }
             }
             egui::Event::PointerMoved(pos) => {
-                let tracking = mode == MouseProtocolMode::AnyMotion || (mode == MouseProtocolMode::ButtonMotion && s.mouse_down.is_some());
+                let tracking = mode == MouseProtocolMode::AnyMotion
+                    || (mode == MouseProtocolMode::ButtonMotion && s.mouse_down.is_some());
                 if !tracking || !text_rect.contains(pos) {
                     continue;
                 }
@@ -2168,7 +2662,15 @@ fn report_mouse(ui: &egui::Ui, s: &mut Session, text_rect: Rect, cw: f32, ch: f3
     }
 }
 
-fn key_bytes(key: egui::Key, m: egui::Modifiers, app_cursor: bool, backspace_bs: bool, enter: &str, delete_del: bool, home_end_tilde: bool) -> Option<Vec<u8>> {
+fn key_bytes(
+    key: egui::Key,
+    m: egui::Modifiers,
+    app_cursor: bool,
+    backspace_bs: bool,
+    enter: &str,
+    delete_del: bool,
+    home_end_tilde: bool,
+) -> Option<Vec<u8>> {
     use egui::Key;
     let modcode = 1 + (m.shift as u8) + 2 * (m.alt as u8) + 4 * (m.ctrl as u8);
     let csi_mod = |final_: char| -> Vec<u8> {
@@ -2246,7 +2748,9 @@ fn key_bytes(key: egui::Key, m: egui::Modifiers, app_cursor: bool, backspace_bs:
             let name = key.name();
             let mut chars = name.chars();
             match (chars.next(), chars.next()) {
-                (Some(c), None) if c.is_ascii_alphabetic() => vec![(c.to_ascii_uppercase() as u8) & 0x1f],
+                (Some(c), None) if c.is_ascii_alphabetic() => {
+                    vec![(c.to_ascii_uppercase() as u8) & 0x1f]
+                }
                 _ => return None,
             }
         }
@@ -2263,7 +2767,14 @@ fn altgr_char(key: egui::Key, shift: bool) -> Option<char> {
     use egui::Key as K;
     #[link(name = "user32")]
     extern "system" {
-        fn ToUnicode(vk: u32, scan: u32, state: *const u8, buf: *mut u16, len: i32, flags: u32) -> i32;
+        fn ToUnicode(
+            vk: u32,
+            scan: u32,
+            state: *const u8,
+            buf: *mut u16,
+            len: i32,
+            flags: u32,
+        ) -> i32;
     }
     let name = key.name();
     let mut it = name.chars();
@@ -2333,12 +2844,27 @@ mod home_end_tests {
     #[test]
     fn home_end_follow_the_option() {
         let n = Modifiers::NONE;
-        assert_eq!(key_bytes(Key::Home, n, false, false, "CR", false, true).unwrap(), b"\x1b[1~");
-        assert_eq!(key_bytes(Key::End, n, false, false, "CR", false, true).unwrap(), b"\x1b[4~");
-        assert_eq!(key_bytes(Key::Home, n, false, false, "CR", false, false).unwrap(), b"\x1b[H");
-        assert_eq!(key_bytes(Key::End, n, false, false, "CR", false, false).unwrap(), b"\x1b[F");
+        assert_eq!(
+            key_bytes(Key::Home, n, false, false, "CR", false, true).unwrap(),
+            b"\x1b[1~"
+        );
+        assert_eq!(
+            key_bytes(Key::End, n, false, false, "CR", false, true).unwrap(),
+            b"\x1b[4~"
+        );
+        assert_eq!(
+            key_bytes(Key::Home, n, false, false, "CR", false, false).unwrap(),
+            b"\x1b[H"
+        );
+        assert_eq!(
+            key_bytes(Key::End, n, false, false, "CR", false, false).unwrap(),
+            b"\x1b[F"
+        );
         // application cursor mode keeps ESC O H / ESC O F
-        assert_eq!(key_bytes(Key::Home, n, true, false, "CR", false, true).unwrap(), b"\x1bOH");
+        assert_eq!(
+            key_bytes(Key::Home, n, true, false, "CR", false, true).unwrap(),
+            b"\x1bOH"
+        );
     }
 }
 
@@ -2441,7 +2967,10 @@ mod real_mouse {
     }
 
     fn wsl(cmd: &str) -> String {
-        let o = Command::new("wsl.exe").args(["-e", "sh", "-c", cmd]).output().unwrap();
+        let o = Command::new("wsl.exe")
+            .args(["-e", "sh", "-c", cmd])
+            .output()
+            .unwrap();
         String::from_utf8_lossy(&o.stdout).trim().to_string()
     }
 
@@ -2449,7 +2978,9 @@ mod real_mouse {
         let d = std::env::temp_dir().join(format!("yetty_mouse_{name}"));
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
-        let text: String = (1..=100).map(|i| format!("line {i:03} abcdefghijklmnopqrstuvwxyz\n")).collect();
+        let text: String = (1..=100)
+            .map(|i| format!("line {i:03} abcdefghijklmnopqrstuvwxyz\n"))
+            .collect();
         std::fs::write(d.join("f.txt"), text).unwrap();
         d
     }
@@ -2458,7 +2989,13 @@ mod real_mouse {
         /// `cmd` runs on a pty of 24x80 in `d`.
         fn start(d: &std::path::Path, cmd: &str) -> Prog {
             let line = format!("cd '{}' && TERM=xterm-256color script -qfec \"stty rows 24 cols 80; {}\" /dev/null", wsl_path(d), cmd);
-            let mut child = Command::new("wsl.exe").args(["-e", "sh", "-c", &line]).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn().unwrap();
+            let mut child = Command::new("wsl.exe")
+                .args(["-e", "sh", "-c", &line])
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::null())
+                .spawn()
+                .unwrap();
             let stdin = child.stdin.take().unwrap();
             let mut stdout = child.stdout.take().unwrap();
             let (tx, rx) = mpsc::channel::<Vec<u8>>();
@@ -2470,7 +3007,12 @@ mod real_mouse {
                     }
                 }
             });
-            Prog { child, stdin, rx, parser: vt100::Parser::new(24, 80, 0) }
+            Prog {
+                child,
+                stdin,
+                rx,
+                parser: vt100::Parser::new(24, 80, 0),
+            }
         }
 
         fn pump(&mut self, ms: u64) {
@@ -2502,7 +3044,10 @@ mod real_mouse {
         }
 
         fn mode(&self) -> (MouseProtocolMode, MouseProtocolEncoding) {
-            (self.parser.screen().mouse_protocol_mode(), self.parser.screen().mouse_protocol_encoding())
+            (
+                self.parser.screen().mouse_protocol_mode(),
+                self.parser.screen().mouse_protocol_encoding(),
+            )
         }
     }
 
@@ -2515,12 +3060,22 @@ mod real_mouse {
 
     fn vim_case(name: &str, ttymouse: &str, want_sgr: bool) {
         let d = dir(name);
-        let mut p = Prog::start(&d, &format!("vim -u NONE -N -c 'set mouse=a nowrap ttymouse={ttymouse}' f.txt"));
+        let mut p = Prog::start(
+            &d,
+            &format!("vim -u NONE -N -c 'set mouse=a nowrap ttymouse={ttymouse}' f.txt"),
+        );
         p.pump(2500);
         let (mode, enc) = p.mode();
         println!("{name}: mode {mode:?}, encoding {enc:?}");
-        assert!(mode != MouseProtocolMode::None, "{name}: vim did not enable mouse reporting");
-        assert_eq!(enc == MouseProtocolEncoding::Sgr, want_sgr, "{name}: encoding {enc:?}");
+        assert!(
+            mode != MouseProtocolMode::None,
+            "{name}: vim did not enable mouse reporting"
+        );
+        assert_eq!(
+            enc == MouseProtocolEncoding::Sgr,
+            want_sgr,
+            "{name}: encoding {enc:?}"
+        );
         p.click(10, 3);
         p.send(b":call writefile([line('.').' '.col('.')], 'pos.txt')\r");
         p.pump(500);
@@ -2530,7 +3085,11 @@ mod real_mouse {
         p.wheel(false, 10, 3);
         p.send(b":call writefile([line('w0')], 'top.txt')\r");
         p.pump(500);
-        let top: i32 = std::fs::read_to_string(d.join("top.txt")).unwrap_or_default().trim().parse().unwrap_or(-1);
+        let top: i32 = std::fs::read_to_string(d.join("top.txt"))
+            .unwrap_or_default()
+            .trim()
+            .parse()
+            .unwrap_or(-1);
         assert!(top > 1, "{name}: wheel did not scroll (top line {top})");
     }
 
@@ -2555,11 +3114,20 @@ mod real_mouse {
             }
         }
         let (mode, enc) = p.mode();
-        assert_eq!((mode, enc), (MouseProtocolMode::PressRelease, MouseProtocolEncoding::Default));
+        assert_eq!(
+            (mode, enc),
+            (
+                MouseProtocolMode::PressRelease,
+                MouseProtocolEncoding::Default
+            )
+        );
         p.click(10, 3);
         p.pump(500);
         // press: ESC [ M (32+0) (32+11) (32+4); release: button 3
-        assert_eq!(std::fs::read_to_string(d.join("got.hex")).unwrap_or_default(), "1b5b4d202b241b5b4d232b24");
+        assert_eq!(
+            std::fs::read_to_string(d.join("got.hex")).unwrap_or_default(),
+            "1b5b4d202b241b5b4d232b24"
+        );
     }
 
     #[test]
@@ -2567,11 +3135,17 @@ mod real_mouse {
     fn real_mouse_tmux_pane_focus() {
         let d = dir("tmux");
         wsl("tmux -L ytm kill-server");
-        let mut p = Prog::start(&d, "tmux -f /dev/null -L ytm new-session -s t \\\\; set -g mouse on \\\\; split-window -h");
+        let mut p = Prog::start(
+            &d,
+            "tmux -f /dev/null -L ytm new-session -s t \\\\; set -g mouse on \\\\; split-window -h",
+        );
         p.pump(3000);
         let (mode, enc) = p.mode();
         println!("tmux: mode {mode:?}, encoding {enc:?}");
-        assert!(mode != MouseProtocolMode::None, "tmux did not enable mouse reporting");
+        assert!(
+            mode != MouseProtocolMode::None,
+            "tmux did not enable mouse reporting"
+        );
         let active = || wsl("tmux -L ytm display -p -t t '#{pane_index}'");
         assert_eq!(active(), "1", "new pane should be active");
         p.click(10, 5); // inside the left pane
@@ -2579,7 +3153,11 @@ mod real_mouse {
         p.click(65, 5); // inside the right pane
         let after_right = active();
         wsl("tmux -L ytm kill-server");
-        assert_eq!((after_left.as_str(), after_right.as_str()), ("0", "1"), "pane focus did not follow the clicks");
+        assert_eq!(
+            (after_left.as_str(), after_right.as_str()),
+            ("0", "1"),
+            "pane focus did not follow the clicks"
+        );
     }
 }
 
@@ -2623,15 +3201,36 @@ mod scheme_palette_tests {
         let pal = config::scheme_palette("Solarized Dark");
         let idx = |i| vt100::Color::Idx(i);
         let d = [1, 2, 3];
-        assert_eq!(resolve(idx(0), d, false, true, true, pal), [0x07, 0x36, 0x42]);
-        assert_eq!(resolve(idx(7), d, false, true, true, pal), [0xee, 0xe8, 0xd5]);
-        assert_eq!(resolve(idx(7), d, true, true, true, pal), [0xfd, 0xf6, 0xe3]);
-        assert_eq!(resolve(idx(0), d, true, true, true, pal), [0x00, 0x2b, 0x38]);
+        assert_eq!(
+            resolve(idx(0), d, false, true, true, pal),
+            [0x07, 0x36, 0x42]
+        );
+        assert_eq!(
+            resolve(idx(7), d, false, true, true, pal),
+            [0xee, 0xe8, 0xd5]
+        );
+        assert_eq!(
+            resolve(idx(7), d, true, true, true, pal),
+            [0xfd, 0xf6, 0xe3]
+        );
+        assert_eq!(
+            resolve(idx(0), d, true, true, true, pal),
+            [0x00, 0x2b, 0x38]
+        );
         // the palettes of "Standard" schemes and the 256-colour cube are not replaced
         assert_eq!(config::scheme_palette("Monochrome"), None);
-        assert_eq!(resolve(idx(1), d, false, true, true, None), config::ansi_palette()[1]);
-        assert_eq!(resolve(idx(100), d, false, true, true, pal), config::xterm256(100));
+        assert_eq!(
+            resolve(idx(1), d, false, true, true, None),
+            config::ansi_palette()[1]
+        );
+        assert_eq!(
+            resolve(idx(100), d, false, true, true, pal),
+            config::xterm256(100)
+        );
         // the System Color Scheme draws with the Dark Pastel palette
-        assert_eq!(config::scheme_palette(config::SYSTEM_SCHEME).unwrap()[1], [0xff, 0x55, 0x55]);
+        assert_eq!(
+            config::scheme_palette(config::SYSTEM_SCHEME).unwrap()[1],
+            [0xff, 0x55, 0x55]
+        );
     }
 }

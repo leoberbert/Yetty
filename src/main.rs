@@ -11,9 +11,9 @@ mod kermit;
 mod keymapdlg;
 mod mnemonics;
 mod nativedlg;
+mod sftplist;
 mod term;
 mod tftp;
-mod sftplist;
 mod transfer;
 mod wizard;
 mod zmodem;
@@ -51,7 +51,10 @@ fn main() -> eframe::Result<()> {
         }
     }
     #[allow(unused_mut)]
-    let mut options = eframe::NativeOptions { viewport, ..Default::default() };
+    let mut options = eframe::NativeOptions {
+        viewport,
+        ..Default::default()
+    };
     #[cfg(target_os = "macos")]
     if screenshot.is_some() {
         options.event_loop_builder = Some(Box::new(|b| {
@@ -60,5 +63,9 @@ fn main() -> eframe::Result<()> {
         }));
     }
     let shot = screenshot.clone();
-    eframe::run_native("Yetty", options, Box::new(move |cc| Ok(Box::new(app::YettyApp::new(cc, shot, connect)))))
+    eframe::run_native(
+        "Yetty",
+        options,
+        Box::new(move |cc| Ok(Box::new(app::YettyApp::new(cc, shot, connect)))),
+    )
 }

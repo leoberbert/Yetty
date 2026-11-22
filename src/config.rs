@@ -131,7 +131,14 @@ pub const MACS_DEFAULT: &[&str] = &[
     "hmac-sha2-256",
     "hmac-sha1",
 ];
-pub const HOSTKEY_DEFAULT: &[&str] = &["ssh-ed25519", "ecdsa-sha2-nistp256", "ecdsa-sha2-nistp384", "ecdsa-sha2-nistp521", "rsa-sha2-512", "rsa-sha2-256"];
+pub const HOSTKEY_DEFAULT: &[&str] = &[
+    "ssh-ed25519",
+    "ecdsa-sha2-nistp256",
+    "ecdsa-sha2-nistp384",
+    "ecdsa-sha2-nistp521",
+    "rsa-sha2-512",
+    "rsa-sha2-256",
+];
 
 /// The label the original shows for an algorithm name.
 pub fn alg_label(name: &str) -> String {
@@ -156,15 +163,28 @@ pub fn alg_label(name: &str) -> String {
         ("hmac-sha2-256", "SHA2-256"),
         ("hmac-sha1", "SHA1"),
     ];
-    t.iter().find(|x| x.0 == name).map(|x| x.1.to_string()).unwrap_or_else(|| name.to_string())
+    t.iter()
+        .find(|x| x.0 == name)
+        .map(|x| x.1.to_string())
+        .unwrap_or_else(|| name.to_string())
 }
 pub fn alg_list(names: &[&str]) -> Vec<AuthMethod> {
-    names.iter().map(|n| AuthMethod { name: n.to_string(), enabled: true }).collect()
+    names
+        .iter()
+        .map(|n| AuthMethod {
+            name: n.to_string(),
+            enabled: true,
+        })
+        .collect()
 }
 
 /// `Some("a,b,c")` when the list differs from the default (reordered or with unchecked items).
 pub fn alg_option(list: &[AuthMethod], default: &[&str]) -> Option<String> {
-    let on: Vec<&str> = list.iter().filter(|a| a.enabled).map(|a| a.name.as_str()).collect();
+    let on: Vec<&str> = list
+        .iter()
+        .filter(|a| a.enabled)
+        .map(|a| a.name.as_str())
+        .collect();
     if on.is_empty() || on == default {
         None
     } else {
@@ -385,7 +405,10 @@ impl Default for SessionConfig {
             credentials: String::new(),
             auth: ["PublicKey", "Keyboard Interactive", "Password", "GSSAPI"]
                 .iter()
-                .map(|n| AuthMethod { name: n.to_string(), enabled: true })
+                .map(|n| AuthMethod {
+                    name: n.to_string(),
+                    enabled: true,
+                })
                 .collect(),
             automate_logon: false,
             send_initial_cr: true,
@@ -498,7 +521,9 @@ impl Default for SessionConfig {
             log_custom_disconnect: String::new(),
             log_custom_line: String::new(),
             log_only_custom: false,
-            sftp_local_dir: std::env::var("USERPROFILE").map(|p| format!("{p}\\Documents")).unwrap_or_default(),
+            sftp_local_dir: std::env::var("USERPROFILE")
+                .map(|p| format!("{p}\\Documents"))
+                .unwrap_or_default(),
             compression_level: 5,
             print_header: String::new(),
             print_footer: String::new(),
@@ -563,7 +588,11 @@ impl SessionConfig {
     /// Command-line words that open this connection in a new window.
     pub fn cli_args(&self) -> Vec<String> {
         match self.protocol {
-            Protocol::Serial => vec!["serial".into(), self.com_port.clone(), self.baud.to_string()],
+            Protocol::Serial => vec![
+                "serial".into(),
+                self.com_port.clone(),
+                self.baud.to_string(),
+            ],
             Protocol::LocalShell => vec!["local".into()],
             p => {
                 let word = match p {
@@ -600,7 +629,14 @@ pub struct CommandDef {
 
 impl Default for CommandDef {
     fn default() -> Self {
-        Self { folder: String::new(), label: String::new(), text: String::new(), color: "Green".into(), description: String::new(), disable_tooltip: false }
+        Self {
+            folder: String::new(),
+            label: String::new(),
+            text: String::new(),
+            color: "Green".into(),
+            description: String::new(),
+            disable_tooltip: false,
+        }
     }
 }
 
@@ -685,8 +721,16 @@ pub struct Credential {
 
 impl Default for Settings {
     fn default() -> Self {
-        let serial = SessionConfig { protocol: Protocol::Serial, port: 0, ..Default::default() };
-        let local = SessionConfig { protocol: Protocol::LocalShell, port: 0, ..Default::default() };
+        let serial = SessionConfig {
+            protocol: Protocol::Serial,
+            port: 0,
+            ..Default::default()
+        };
+        let local = SessionConfig {
+            protocol: Protocol::LocalShell,
+            port: 0,
+            ..Default::default()
+        };
         Self {
             sessions: Vec::new(),
             folders: Vec::new(),
@@ -699,8 +743,14 @@ impl Default for Settings {
             cmd_send_immediately: false,
             button_bars: Vec::new(),
             buttons: vec![
-                ButtonDef { label: "Clear".into(), text: "clear\\r".into() },
-                ButtonDef { label: "Who am I".into(), text: "whoami\\r".into() },
+                ButtonDef {
+                    label: "Clear".into(),
+                    text: "clear\\r".into(),
+                },
+                ButtonDef {
+                    label: "Who am I".into(),
+                    text: "whoami\\r".into(),
+                },
             ],
             keywords: vec!["error".into(), "warning".into()],
             keyword_highlighting: true,
@@ -754,7 +804,9 @@ impl Settings {
 }
 
 pub fn data_dir() -> PathBuf {
-    let base = std::env::var_os("APPDATA").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+    let base = std::env::var_os("APPDATA")
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir);
     let dir = base.join("Yetty");
     // The program was called NexTerm before: its settings folder is moved over once.
     let old = base.join("NexTerm");
@@ -775,7 +827,11 @@ impl Settings {
             .and_then(|s| serde_json::from_str(&s).ok())
             .unwrap_or_default();
         // The old default font size (14) gave rows taller than the original's; 13 matches it.
-        for c in st.sessions.iter_mut().chain([&mut st.default_session, &mut st.default_serial, &mut st.default_local]) {
+        for c in st.sessions.iter_mut().chain([
+            &mut st.default_session,
+            &mut st.default_serial,
+            &mut st.default_local,
+        ]) {
             if (c.font_size - 14.0).abs() < 0.01 {
                 c.font_size = 13.0;
             }
@@ -872,7 +928,9 @@ pub fn now() -> Now {
     }
     #[allow(unreachable_code)]
     {
-        let d = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
+        let d = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default();
         let secs = d.as_secs();
         let days = (secs / 86400) as i64;
         let rem = secs % 86400;
@@ -886,7 +944,15 @@ pub fn now() -> Now {
         let dd = (doy - (153 * mp + 2) / 5 + 1) as u32;
         let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
         let y = if m <= 2 { y + 1 } else { y };
-        Now { y: y as u32, mo: m, d: dd, h: (rem / 3600) as u32, mi: ((rem % 3600) / 60) as u32, s: (rem % 60) as u32, ms: d.subsec_millis() }
+        Now {
+            y: y as u32,
+            mo: m,
+            d: dd,
+            h: (rem / 3600) as u32,
+            mi: ((rem % 3600) / 60) as u32,
+            s: (rem % 60) as u32,
+            ms: d.subsec_millis(),
+        }
     }
 }
 
@@ -894,7 +960,10 @@ pub fn now() -> Now {
 pub fn lock_keys() -> (bool, bool) {
     #[cfg(windows)]
     unsafe {
-        return (sys::GetKeyState(0x14) & 1 != 0, sys::GetKeyState(0x90) & 1 != 0);
+        return (
+            sys::GetKeyState(0x14) & 1 != 0,
+            sys::GetKeyState(0x90) & 1 != 0,
+        );
     }
     #[allow(unreachable_code)]
     (false, false)
@@ -907,11 +976,25 @@ pub fn detected_keys() -> Vec<String> {
         if let Ok(rd) = std::fs::read_dir(dir) {
             for e in rd.flatten() {
                 let p = e.path();
-                let name = p.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
-                if !p.is_file() || name.ends_with(".pub") || ["known_hosts", "known_hosts.old", "config", "authorized_keys"].contains(&name.as_str()) {
+                let name = p
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_lowercase())
+                    .unwrap_or_default();
+                if !p.is_file()
+                    || name.ends_with(".pub")
+                    || [
+                        "known_hosts",
+                        "known_hosts.old",
+                        "config",
+                        "authorized_keys",
+                    ]
+                    .contains(&name.as_str())
+                {
                     continue;
                 }
-                if let Ok(head) = std::fs::read_to_string(&p).map(|t| t.chars().take(60).collect::<String>()) {
+                if let Ok(head) =
+                    std::fs::read_to_string(&p).map(|t| t.chars().take(60).collect::<String>())
+                {
                     if head.contains("PRIVATE KEY") || head.contains("PuTTY-User-Key") {
                         out.push(p.to_string_lossy().into_owned());
                     }
@@ -937,7 +1020,17 @@ fn browse_file_slow(title: &str, start_dir: Option<&str>) -> Option<String> {
         dir,
         dir
     );
-    let out = std::process::Command::new("powershell.exe").args(["-NoProfile", "-STA", "-WindowStyle", "Hidden", "-Command", &script]).output().ok()?;
+    let out = std::process::Command::new("powershell.exe")
+        .args([
+            "-NoProfile",
+            "-STA",
+            "-WindowStyle",
+            "Hidden",
+            "-Command",
+            &script,
+        ])
+        .output()
+        .ok()?;
     let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
     if s.is_empty() {
         None
@@ -951,7 +1044,9 @@ pub fn open_console(cmdline: &str) {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        let _ = std::process::Command::new("cmd.exe").raw_arg(format!("/C start \"Yetty\" cmd.exe /K {cmdline}")).spawn();
+        let _ = std::process::Command::new("cmd.exe")
+            .raw_arg(format!("/C start \"Yetty\" cmd.exe /K {cmdline}"))
+            .spawn();
     }
     #[cfg(not(windows))]
     {
@@ -960,7 +1055,17 @@ pub fn open_console(cmdline: &str) {
 }
 
 fn powershell_pick(script: &str) -> Option<String> {
-    let out = std::process::Command::new("powershell.exe").args(["-NoProfile", "-STA", "-WindowStyle", "Hidden", "-Command", script]).output().ok()?;
+    let out = std::process::Command::new("powershell.exe")
+        .args([
+            "-NoProfile",
+            "-STA",
+            "-WindowStyle",
+            "Hidden",
+            "-Command",
+            script,
+        ])
+        .output()
+        .ok()?;
     let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
     if s.is_empty() {
         None
@@ -996,7 +1101,9 @@ fn browse_save_slow(title: &str) -> Option<String> {
 }
 
 pub fn ssh_dir() -> String {
-    std::env::var_os("USERPROFILE").map(|p| PathBuf::from(p).join(".ssh").to_string_lossy().into_owned()).unwrap_or_default()
+    std::env::var_os("USERPROFILE")
+        .map(|p| PathBuf::from(p).join(".ssh").to_string_lossy().into_owned())
+        .unwrap_or_default()
 }
 
 // ---------------------------------------------------------------------------
@@ -1012,8 +1119,24 @@ mod dpapi {
     }
     #[link(name = "crypt32")]
     extern "system" {
-        pub fn CryptProtectData(pin: *const Blob, desc: *const u16, entropy: *const Blob, reserved: *mut c_void, prompt: *mut c_void, flags: u32, out: *mut Blob) -> i32;
-        pub fn CryptUnprotectData(pin: *const Blob, desc: *mut *mut u16, entropy: *const Blob, reserved: *mut c_void, prompt: *mut c_void, flags: u32, out: *mut Blob) -> i32;
+        pub fn CryptProtectData(
+            pin: *const Blob,
+            desc: *const u16,
+            entropy: *const Blob,
+            reserved: *mut c_void,
+            prompt: *mut c_void,
+            flags: u32,
+            out: *mut Blob,
+        ) -> i32;
+        pub fn CryptUnprotectData(
+            pin: *const Blob,
+            desc: *mut *mut u16,
+            entropy: *const Blob,
+            reserved: *mut c_void,
+            prompt: *mut c_void,
+            flags: u32,
+            out: *mut Blob,
+        ) -> i32;
     }
     #[link(name = "kernel32")]
     extern "system" {
@@ -1047,12 +1170,33 @@ pub fn is_protected(s: &str) -> bool {
 fn dpapi_protect(plain: &[u8], entropy: Option<&[u8]>) -> Option<Vec<u8>> {
     unsafe {
         let mut data = plain.to_vec();
-        let input = dpapi::Blob { cb: data.len() as u32, pb: data.as_mut_ptr() };
+        let input = dpapi::Blob {
+            cb: data.len() as u32,
+            pb: data.as_mut_ptr(),
+        };
         let mut ent = entropy.map(|e| e.to_vec());
-        let ent_blob = ent.as_mut().map(|e| dpapi::Blob { cb: e.len() as u32, pb: e.as_mut_ptr() });
-        let mut out = dpapi::Blob { cb: 0, pb: std::ptr::null_mut() };
-        let ent_ptr = ent_blob.as_ref().map_or(std::ptr::null(), |b| b as *const dpapi::Blob);
-        if dpapi::CryptProtectData(&input, std::ptr::null(), ent_ptr, std::ptr::null_mut(), std::ptr::null_mut(), 0, &mut out) != 0 && !out.pb.is_null() {
+        let ent_blob = ent.as_mut().map(|e| dpapi::Blob {
+            cb: e.len() as u32,
+            pb: e.as_mut_ptr(),
+        });
+        let mut out = dpapi::Blob {
+            cb: 0,
+            pb: std::ptr::null_mut(),
+        };
+        let ent_ptr = ent_blob
+            .as_ref()
+            .map_or(std::ptr::null(), |b| b as *const dpapi::Blob);
+        if dpapi::CryptProtectData(
+            &input,
+            std::ptr::null(),
+            ent_ptr,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            0,
+            &mut out,
+        ) != 0
+            && !out.pb.is_null()
+        {
             let bytes = std::slice::from_raw_parts(out.pb, out.cb as usize).to_vec();
             dpapi::LocalFree(out.pb as *mut _);
             return Some(bytes);
@@ -1065,12 +1209,33 @@ fn dpapi_protect(plain: &[u8], entropy: Option<&[u8]>) -> Option<Vec<u8>> {
 fn dpapi_unprotect(cipher: &[u8], entropy: Option<&[u8]>) -> Option<Vec<u8>> {
     unsafe {
         let mut data = cipher.to_vec();
-        let input = dpapi::Blob { cb: data.len() as u32, pb: data.as_mut_ptr() };
+        let input = dpapi::Blob {
+            cb: data.len() as u32,
+            pb: data.as_mut_ptr(),
+        };
         let mut ent = entropy.map(|e| e.to_vec());
-        let ent_blob = ent.as_mut().map(|e| dpapi::Blob { cb: e.len() as u32, pb: e.as_mut_ptr() });
-        let mut out = dpapi::Blob { cb: 0, pb: std::ptr::null_mut() };
-        let ent_ptr = ent_blob.as_ref().map_or(std::ptr::null(), |b| b as *const dpapi::Blob);
-        if dpapi::CryptUnprotectData(&input, std::ptr::null_mut(), ent_ptr, std::ptr::null_mut(), std::ptr::null_mut(), 0, &mut out) != 0 && !out.pb.is_null() {
+        let ent_blob = ent.as_mut().map(|e| dpapi::Blob {
+            cb: e.len() as u32,
+            pb: e.as_mut_ptr(),
+        });
+        let mut out = dpapi::Blob {
+            cb: 0,
+            pb: std::ptr::null_mut(),
+        };
+        let ent_ptr = ent_blob
+            .as_ref()
+            .map_or(std::ptr::null(), |b| b as *const dpapi::Blob);
+        if dpapi::CryptUnprotectData(
+            &input,
+            std::ptr::null_mut(),
+            ent_ptr,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            0,
+            &mut out,
+        ) != 0
+            && !out.pb.is_null()
+        {
             let plain = std::slice::from_raw_parts(out.pb, out.cb as usize).to_vec();
             dpapi::LocalFree(out.pb as *mut _);
             return Some(plain);
@@ -1098,7 +1263,14 @@ pub fn protect_with(plain: &str, passphrase: Option<&str>) -> String {
     match dpapi_protect(plain.as_bytes(), pass.map(|p| p.as_bytes())) {
         Some(bytes) => {
             let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
-            format!("{}{hex}", if pass.is_some() { ENC2_PREFIX } else { ENC_PREFIX })
+            format!(
+                "{}{hex}",
+                if pass.is_some() {
+                    ENC2_PREFIX
+                } else {
+                    ENC_PREFIX
+                }
+            )
         }
         None => plain.to_string(),
     }
@@ -1113,7 +1285,9 @@ pub fn unprotect_with(stored: &str, passphrase: Option<&str>) -> String {
     } else {
         return stored.to_string();
     };
-    let bytes: Vec<u8> = (0..hex.len() / 2).filter_map(|i| u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16).ok()).collect();
+    let bytes: Vec<u8> = (0..hex.len() / 2)
+        .filter_map(|i| u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16).ok())
+        .collect();
     let entropy = if needs_pass {
         match passphrase.filter(|p| !p.is_empty()) {
             Some(p) => Some(p.as_bytes()),
@@ -1122,7 +1296,9 @@ pub fn unprotect_with(stored: &str, passphrase: Option<&str>) -> String {
     } else {
         None
     };
-    dpapi_unprotect(&bytes, entropy).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default()
+    dpapi_unprotect(&bytes, entropy)
+        .map(|b| String::from_utf8_lossy(&b).into_owned())
+        .unwrap_or_default()
 }
 
 /// Encrypt a password for storing in the settings file (with the configuration passphrase when one is set).
@@ -1142,41 +1318,6 @@ pub fn passphrase_check_value(passphrase: &str) -> String {
 
 pub fn passphrase_matches(check: &str, passphrase: &str) -> bool {
     !passphrase.is_empty() && unprotect_with(check, Some(passphrase)) == PASS_CHECK
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn password_roundtrip() {
-        let enc = super::protect("s3cret é");
-        #[cfg(windows)]
-        assert!(super::is_protected(&enc) && !enc.contains("s3cret"));
-        assert_eq!(super::unprotect(&enc), "s3cret é");
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn passphrase_protects_and_rekey_moves_secrets() {
-        let enc = super::protect_with("pw1", Some("open sesame"));
-        assert!(enc.starts_with("dpapi2:") && !enc.contains("pw1"));
-        assert_eq!(super::unprotect_with(&enc, Some("open sesame")), "pw1");
-        assert_eq!(super::unprotect_with(&enc, Some("wrong")), "");
-        assert_eq!(super::unprotect_with(&enc, None), "");
-        let check = super::passphrase_check_value("open sesame");
-        assert!(super::passphrase_matches(&check, "open sesame") && !super::passphrase_matches(&check, "other"));
-
-        let mut st = super::Settings::default();
-        let mut c = super::SessionConfig::default();
-        c.saved_password = super::protect_with("hunter2", None);
-        st.sessions.push(c);
-        st.rekey(None, Some("open sesame"));
-        assert!(st.sessions[0].saved_password.starts_with("dpapi2:"));
-        assert_eq!(super::unprotect_with(&st.sessions[0].saved_password, Some("open sesame")), "hunter2");
-        st.rekey(Some("open sesame"), None);
-        assert!(st.sessions[0].saved_password.starts_with("dpapi:"));
-        assert_eq!(super::unprotect_with(&st.sessions[0].saved_password, None), "hunter2");
-        assert!(st.config_passphrase_check.is_empty());
-    }
 }
 
 /// Make the main window see-through (alpha 255 = opaque). Windows only.
@@ -1237,7 +1378,9 @@ pub fn expand_log_name(pattern: &str, host: &str, session: &str) -> String {
             None => out.push('%'),
         }
     }
-    out.chars().map(|c| if "<>:\"|?*".contains(c) { '_' } else { c }).collect()
+    out.chars()
+        .map(|c| if "<>:\"|?*".contains(c) { '_' } else { c })
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -1267,20 +1410,104 @@ pub const ANSI_PALETTE: [Rgb; 16] = [
 
 /// The original's built-in ANSI palettes besides "Standard" (Global.ini, "ANSI Color Palettes"): colours 0-7, then bold 8-15.
 pub const PALETTES: &[(&str, [u32; 16])] = &[
-    ("Birds of Paradise", [0x573d26, 0xbe2d26, 0x6ba18a, 0xe99d2a, 0x5a86ad, 0xac80a6, 0x74a6ad, 0xe0dbb7, 0x9b6c4a, 0xe84627, 0x95d8ba, 0xd0d150, 0xb8d3ed, 0xd19ecb, 0x93cfd7, 0xfff9d5]),
-    ("Chalkboard", [0x000000, 0xc37372, 0x72c373, 0xc2c372, 0x7372c3, 0xc372c2, 0x72c2c3, 0xd9d9d9, 0x323232, 0xdbaaaa, 0xaadbaa, 0xdadbaa, 0xaaaadb, 0xdbaada, 0xaadadb, 0xffffff]),
-    ("Ciapre", [0x181818, 0x810009, 0x48513b, 0xcc8b3f, 0x576d8c, 0x724d7c, 0x5c4f4b, 0xaea47f, 0x555555, 0xac3835, 0xa6a75d, 0xdcdf7c, 0x3097c6, 0xd33061, 0xf3dbb2, 0xf4f4f4]),
-    ("Dark Pastel", [0x000000, 0xff5555, 0x55ff55, 0xffff55, 0x5555ff, 0xff55ff, 0x55ffff, 0xbbbbbb, 0x555555, 0xff5555, 0x55ff55, 0xffff55, 0x5555ff, 0xff55ff, 0x55ffff, 0xffffff]),
-    ("Desert", [0x4d4d4d, 0xff2b2b, 0x98fb98, 0xf0e68c, 0xcd853f, 0xffdead, 0xffa0a0, 0xf5deb3, 0x555555, 0xff5555, 0x55ff55, 0xffff55, 0x87ceff, 0xff55ff, 0xffd700, 0xffffff]),
-    ("Espresso", [0x353535, 0xd25252, 0xa5c261, 0xffc66d, 0x6c99bb, 0xd197d9, 0xbed6ff, 0xeeeeec, 0x535353, 0xf00c0c, 0xc2e075, 0xe1e48b, 0x8ab7d9, 0xefb5f7, 0xdcf4ff, 0xffffff]),
-    ("Idletoes", [0x323232, 0xd25252, 0x7fe173, 0xffc66d, 0x4099ff, 0xf680ff, 0xbed6ff, 0xeeeeec, 0x535353, 0xf07070, 0x9dff91, 0xffe48b, 0x5eb7f7, 0xff9dff, 0xdcf4ff, 0xffffff]),
-    ("Invisibone", [0x303030, 0xd370a3, 0x6d9e3f, 0xb58858, 0x6095c5, 0xac7bde, 0x3ba275, 0xcfcfcf, 0x686868, 0xffa7da, 0xa3d572, 0xefbd8b, 0x98cbfe, 0xe5b0ff, 0x75daa9, 0xffffff]),
-    ("Novel", [0x000000, 0xcc0000, 0x009600, 0xd06b00, 0x0000cc, 0xcc00cc, 0x0087cc, 0xcccccc, 0x808080, 0xcc0000, 0x009600, 0xd06b00, 0x0000cc, 0xcc00cc, 0x0087cc, 0xffffff]),
-    ("Solarized Dark", [0x073642, 0xdc322f, 0x859900, 0xb58900, 0x268bd2, 0xd33682, 0x2aa198, 0xeee8d5, 0x002b38, 0xcb4b16, 0x586e75, 0x657b83, 0x839496, 0x6c71c4, 0x93a1a1, 0xfdf6e3]),
-    ("Solarized Darcula", [0x25292a, 0xf24840, 0x629655, 0xb68800, 0x2075c7, 0x797fd4, 0x15968d, 0xd2d8d9, 0x25292a, 0xf24840, 0x629655, 0xb68800, 0x2075c7, 0x797fd4, 0x15968d, 0xd2d8d9]),
-    ("Solarized Light", [0x073642, 0xdc322f, 0x859900, 0xb58900, 0x268bd2, 0xd33682, 0x2aa198, 0xeee8d5, 0x002b38, 0xcb4b16, 0x586e75, 0x657b83, 0x839496, 0x6c71c4, 0x93a1a1, 0xfdf6e3]),
-    ("Tomorrow", [0x8e908c, 0xff3334, 0x9ec400, 0xeab700, 0x5795e6, 0xb777e0, 0x54ced6, 0xefefef, 0x000000, 0xc82829, 0x718c00, 0xf5871f, 0x4271ae, 0x8959a8, 0x3e999f, 0xd6d6d6]),
-    ("Zenburn", [0x4d4d4d, 0x705050, 0x60b48a, 0xf0dfaf, 0x506070, 0xdc8cc3, 0x8cd0d3, 0xdcdccc, 0x709080, 0xdca3a3, 0xc3bf9f, 0xe0cf9f, 0x94bff3, 0xec93d3, 0x93e0e3, 0xffffff]),
+    (
+        "Birds of Paradise",
+        [
+            0x573d26, 0xbe2d26, 0x6ba18a, 0xe99d2a, 0x5a86ad, 0xac80a6, 0x74a6ad, 0xe0dbb7,
+            0x9b6c4a, 0xe84627, 0x95d8ba, 0xd0d150, 0xb8d3ed, 0xd19ecb, 0x93cfd7, 0xfff9d5,
+        ],
+    ),
+    (
+        "Chalkboard",
+        [
+            0x000000, 0xc37372, 0x72c373, 0xc2c372, 0x7372c3, 0xc372c2, 0x72c2c3, 0xd9d9d9,
+            0x323232, 0xdbaaaa, 0xaadbaa, 0xdadbaa, 0xaaaadb, 0xdbaada, 0xaadadb, 0xffffff,
+        ],
+    ),
+    (
+        "Ciapre",
+        [
+            0x181818, 0x810009, 0x48513b, 0xcc8b3f, 0x576d8c, 0x724d7c, 0x5c4f4b, 0xaea47f,
+            0x555555, 0xac3835, 0xa6a75d, 0xdcdf7c, 0x3097c6, 0xd33061, 0xf3dbb2, 0xf4f4f4,
+        ],
+    ),
+    (
+        "Dark Pastel",
+        [
+            0x000000, 0xff5555, 0x55ff55, 0xffff55, 0x5555ff, 0xff55ff, 0x55ffff, 0xbbbbbb,
+            0x555555, 0xff5555, 0x55ff55, 0xffff55, 0x5555ff, 0xff55ff, 0x55ffff, 0xffffff,
+        ],
+    ),
+    (
+        "Desert",
+        [
+            0x4d4d4d, 0xff2b2b, 0x98fb98, 0xf0e68c, 0xcd853f, 0xffdead, 0xffa0a0, 0xf5deb3,
+            0x555555, 0xff5555, 0x55ff55, 0xffff55, 0x87ceff, 0xff55ff, 0xffd700, 0xffffff,
+        ],
+    ),
+    (
+        "Espresso",
+        [
+            0x353535, 0xd25252, 0xa5c261, 0xffc66d, 0x6c99bb, 0xd197d9, 0xbed6ff, 0xeeeeec,
+            0x535353, 0xf00c0c, 0xc2e075, 0xe1e48b, 0x8ab7d9, 0xefb5f7, 0xdcf4ff, 0xffffff,
+        ],
+    ),
+    (
+        "Idletoes",
+        [
+            0x323232, 0xd25252, 0x7fe173, 0xffc66d, 0x4099ff, 0xf680ff, 0xbed6ff, 0xeeeeec,
+            0x535353, 0xf07070, 0x9dff91, 0xffe48b, 0x5eb7f7, 0xff9dff, 0xdcf4ff, 0xffffff,
+        ],
+    ),
+    (
+        "Invisibone",
+        [
+            0x303030, 0xd370a3, 0x6d9e3f, 0xb58858, 0x6095c5, 0xac7bde, 0x3ba275, 0xcfcfcf,
+            0x686868, 0xffa7da, 0xa3d572, 0xefbd8b, 0x98cbfe, 0xe5b0ff, 0x75daa9, 0xffffff,
+        ],
+    ),
+    (
+        "Novel",
+        [
+            0x000000, 0xcc0000, 0x009600, 0xd06b00, 0x0000cc, 0xcc00cc, 0x0087cc, 0xcccccc,
+            0x808080, 0xcc0000, 0x009600, 0xd06b00, 0x0000cc, 0xcc00cc, 0x0087cc, 0xffffff,
+        ],
+    ),
+    (
+        "Solarized Dark",
+        [
+            0x073642, 0xdc322f, 0x859900, 0xb58900, 0x268bd2, 0xd33682, 0x2aa198, 0xeee8d5,
+            0x002b38, 0xcb4b16, 0x586e75, 0x657b83, 0x839496, 0x6c71c4, 0x93a1a1, 0xfdf6e3,
+        ],
+    ),
+    (
+        "Solarized Darcula",
+        [
+            0x25292a, 0xf24840, 0x629655, 0xb68800, 0x2075c7, 0x797fd4, 0x15968d, 0xd2d8d9,
+            0x25292a, 0xf24840, 0x629655, 0xb68800, 0x2075c7, 0x797fd4, 0x15968d, 0xd2d8d9,
+        ],
+    ),
+    (
+        "Solarized Light",
+        [
+            0x073642, 0xdc322f, 0x859900, 0xb58900, 0x268bd2, 0xd33682, 0x2aa198, 0xeee8d5,
+            0x002b38, 0xcb4b16, 0x586e75, 0x657b83, 0x839496, 0x6c71c4, 0x93a1a1, 0xfdf6e3,
+        ],
+    ),
+    (
+        "Tomorrow",
+        [
+            0x8e908c, 0xff3334, 0x9ec400, 0xeab700, 0x5795e6, 0xb777e0, 0x54ced6, 0xefefef,
+            0x000000, 0xc82829, 0x718c00, 0xf5871f, 0x4271ae, 0x8959a8, 0x3e999f, 0xd6d6d6,
+        ],
+    ),
+    (
+        "Zenburn",
+        [
+            0x4d4d4d, 0x705050, 0x60b48a, 0xf0dfaf, 0x506070, 0xdc8cc3, 0x8cd0d3, 0xdcdccc,
+            0x709080, 0xdca3a3, 0xc3bf9f, 0xe0cf9f, 0x94bff3, 0xec93d3, 0x93e0e3, 0xffffff,
+        ],
+    ),
 ];
 
 pub fn palette_from_hex(v: &[u32; 16]) -> [Rgb; 16] {
@@ -1291,8 +1518,15 @@ pub fn palette_from_hex(v: &[u32; 16]) -> [Rgb; 16] {
 /// "Standard", so the palette chosen in Global Options > ANSI Color stays. The System Color Scheme is not in the
 /// file; what the original draws under it (SGR 31, 37, 90... measured on 2026-11-22) is the Dark Pastel palette.
 pub fn scheme_palette(scheme: &str) -> Option<[Rgb; 16]> {
-    let name = if scheme == SYSTEM_SCHEME { "Dark Pastel" } else { scheme };
-    PALETTES.iter().find(|p| p.0 == name).map(|p| palette_from_hex(&p.1))
+    let name = if scheme == SYSTEM_SCHEME {
+        "Dark Pastel"
+    } else {
+        scheme
+    };
+    PALETTES
+        .iter()
+        .find(|p| p.0 == name)
+        .map(|p| palette_from_hex(&p.1))
 }
 
 const fn hex(v: u32) -> Rgb {
@@ -1414,6 +1648,55 @@ impl Settings {
                 c.pass = protect_with(&plain, new);
             }
         }
-        self.config_passphrase_check = new.filter(|p| !p.is_empty()).map(passphrase_check_value).unwrap_or_default();
+        self.config_passphrase_check = new
+            .filter(|p| !p.is_empty())
+            .map(passphrase_check_value)
+            .unwrap_or_default();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn password_roundtrip() {
+        let enc = super::protect("s3cret é");
+        #[cfg(windows)]
+        assert!(super::is_protected(&enc) && !enc.contains("s3cret"));
+        assert_eq!(super::unprotect(&enc), "s3cret é");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn passphrase_protects_and_rekey_moves_secrets() {
+        let enc = super::protect_with("pw1", Some("open sesame"));
+        assert!(enc.starts_with("dpapi2:") && !enc.contains("pw1"));
+        assert_eq!(super::unprotect_with(&enc, Some("open sesame")), "pw1");
+        assert_eq!(super::unprotect_with(&enc, Some("wrong")), "");
+        assert_eq!(super::unprotect_with(&enc, None), "");
+        let check = super::passphrase_check_value("open sesame");
+        assert!(
+            super::passphrase_matches(&check, "open sesame")
+                && !super::passphrase_matches(&check, "other")
+        );
+
+        let mut st = super::Settings::default();
+        let c = super::SessionConfig {
+            saved_password: super::protect_with("hunter2", None),
+            ..Default::default()
+        };
+        st.sessions.push(c);
+        st.rekey(None, Some("open sesame"));
+        assert!(st.sessions[0].saved_password.starts_with("dpapi2:"));
+        assert_eq!(
+            super::unprotect_with(&st.sessions[0].saved_password, Some("open sesame")),
+            "hunter2"
+        );
+        st.rekey(Some("open sesame"), None);
+        assert!(st.sessions[0].saved_password.starts_with("dpapi:"));
+        assert_eq!(
+            super::unprotect_with(&st.sessions[0].saved_password, None),
+            "hunter2"
+        );
+        assert!(st.config_passphrase_check.is_empty());
     }
 }

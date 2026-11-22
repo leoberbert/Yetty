@@ -76,7 +76,11 @@ pub fn crc16(data: &[u8]) -> u16 {
     for &b in data {
         crc ^= (b as u16) << 8;
         for _ in 0..8 {
-            crc = if crc & 0x8000 != 0 { (crc << 1) ^ 0x1021 } else { crc << 1 };
+            crc = if crc & 0x8000 != 0 {
+                (crc << 1) ^ 0x1021
+            } else {
+                crc << 1
+            };
         }
     }
     crc
@@ -116,7 +120,10 @@ impl Transfer {
             return Err("The file is empty.".into());
         }
         let mut t = Transfer::base(proto, Dir::Send, path.to_path_buf());
-        t.name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "file".into());
+        t.name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "file".into());
         t.total = data.len();
         t.data = data;
         t.phase = Phase::SWaitStart;
@@ -130,15 +137,33 @@ impl Transfer {
         t.phase = Phase::RStart;
         t.blk = if proto == Proto::Ymodem { 0 } else { 1 };
         t.status = "Waiting for the sender...".into();
-        t.name = t.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        t.name = t
+            .path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
         t
     }
 
     /// Copies the engine's progress into the fields the progress window reads.
     fn sync(&mut self) {
         let (status, done, failed, bytes_done, total, name) = match self.eng.as_ref() {
-            Some(Eng::K(k)) => (k.status.clone(), k.done, k.failed, k.bytes_done, k.total, k.name.clone()),
-            Some(Eng::Z(z)) => (z.status.clone(), z.done, z.failed, z.bytes_done, z.total, z.name.clone()),
+            Some(Eng::K(k)) => (
+                k.status.clone(),
+                k.done,
+                k.failed,
+                k.bytes_done,
+                k.total,
+                k.name.clone(),
+            ),
+            Some(Eng::Z(z)) => (
+                z.status.clone(),
+                z.done,
+                z.failed,
+                z.bytes_done,
+                z.total,
+                z.name.clone(),
+            ),
             None => return,
         };
         self.status = status;
@@ -157,19 +182,35 @@ impl Transfer {
     }
 
     pub fn new_kermit_send(path: &Path) -> Result<Transfer, String> {
-        Ok(Transfer::with_engine(Proto::Kermit, Dir::Send, Eng::K(crate::kermit::Kermit::new_send(path)?)))
+        Ok(Transfer::with_engine(
+            Proto::Kermit,
+            Dir::Send,
+            Eng::K(crate::kermit::Kermit::new_send(path)?),
+        ))
     }
 
     pub fn new_kermit_receive(folder: PathBuf) -> Transfer {
-        Transfer::with_engine(Proto::Kermit, Dir::Receive, Eng::K(crate::kermit::Kermit::new_receive(folder)))
+        Transfer::with_engine(
+            Proto::Kermit,
+            Dir::Receive,
+            Eng::K(crate::kermit::Kermit::new_receive(folder)),
+        )
     }
 
     pub fn new_zmodem_send(files: Vec<PathBuf>) -> Result<Transfer, String> {
-        Ok(Transfer::with_engine(Proto::Zmodem, Dir::Send, Eng::Z(crate::zmodem::Zmodem::new_send(files)?)))
+        Ok(Transfer::with_engine(
+            Proto::Zmodem,
+            Dir::Send,
+            Eng::Z(crate::zmodem::Zmodem::new_send(files)?),
+        ))
     }
 
     pub fn new_zmodem_receive(folder: PathBuf) -> Transfer {
-        Transfer::with_engine(Proto::Zmodem, Dir::Receive, Eng::Z(crate::zmodem::Zmodem::new_receive(folder)))
+        Transfer::with_engine(
+            Proto::Zmodem,
+            Dir::Receive,
+            Eng::Z(crate::zmodem::Zmodem::new_receive(folder)),
+        )
     }
 
     pub fn label(&self) -> &'static str {
@@ -317,7 +358,10 @@ impl Transfer {
             Phase::End => {}
             _ => {
                 if self.last.elapsed() > Duration::from_secs(10) {
-                    if matches!(self.phase, Phase::SWaitStart | Phase::SWaitC1 | Phase::SWaitC2) {
+                    if matches!(
+                        self.phase,
+                        Phase::SWaitStart | Phase::SWaitC1 | Phase::SWaitC2
+                    ) {
                         self.retries += 1;
                         self.last = Instant::now();
                         if self.retries > 6 {
@@ -479,7 +523,9 @@ impl Transfer {
             return;
         }
         let expected = self.blk;
-        if blk[1] == expected.wrapping_sub(1) && !(self.phase == Phase::RStart && self.proto == Proto::Ymodem) {
+        if blk[1] == expected.wrapping_sub(1)
+            && !(self.phase == Phase::RStart && self.proto == Proto::Ymodem)
+        {
             self.emit(out, vec![ACK]); // duplicate block
             return;
         }
@@ -497,9 +543,16 @@ impl Transfer {
                 return;
             }
             let raw = String::from_utf8_lossy(&payload[..name_end]).into_owned();
-            self.name = Path::new(&raw).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or(raw);
+            self.name = Path::new(&raw)
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or(raw);
             let rest = &payload[name_end + 1..];
-            let size_txt: String = rest.iter().take_while(|&&b| b != 0 && b != b' ').map(|&b| b as char).collect();
+            let size_txt: String = rest
+                .iter()
+                .take_while(|&&b| b != 0 && b != b' ')
+                .map(|&b| b as char)
+                .collect();
             self.ysize = size_txt.parse().ok();
             self.total = self.ysize.unwrap_or(0);
             self.data.clear();
@@ -515,7 +568,14 @@ impl Transfer {
         self.data.extend_from_slice(payload);
         self.bytes_done = self.data.len();
         self.blk = self.blk.wrapping_add(1);
-        self.status = format!("Receiving {} ...", if self.name.is_empty() { "file" } else { &self.name });
+        self.status = format!(
+            "Receiving {} ...",
+            if self.name.is_empty() {
+                "file"
+            } else {
+                &self.name
+            }
+        );
         self.emit(out, vec![ACK]);
     }
 
@@ -530,7 +590,11 @@ impl Transfer {
                 }
             }
         }
-        let target = if self.proto == Proto::Ymodem { self.path.join(&self.name) } else { self.path.clone() };
+        let target = if self.proto == Proto::Ymodem {
+            self.path.join(&self.name)
+        } else {
+            self.path.clone()
+        };
         if let Some(parent) = target.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
@@ -580,9 +644,20 @@ mod tests {
         let src = dir.join("source.bin");
         let data: Vec<u8> = (0..3000u32).map(|i| (i * 7 % 251) as u8).collect();
         std::fs::write(&src, &data).unwrap();
-        let dst = if proto == Proto::Ymodem { dir.join("out") } else { dir.join("received.bin") };
+        let dst = if proto == Proto::Ymodem {
+            dir.join("out")
+        } else {
+            dir.join("received.bin")
+        };
         let mut tx = Transfer::new_send(proto, &src).unwrap();
-        let mut rx = Transfer::new_receive(if proto == Proto::Xmodem1k { Proto::Xmodem } else { proto }, dst.clone());
+        let mut rx = Transfer::new_receive(
+            if proto == Proto::Xmodem1k {
+                Proto::Xmodem
+            } else {
+                proto
+            },
+            dst.clone(),
+        );
         let mut to_tx: Vec<u8> = Vec::new();
         let mut to_rx: Vec<u8> = Vec::new();
         for _ in 0..2000 {
@@ -603,7 +678,11 @@ mod tests {
         assert!(tx.done && !tx.failed, "sender: {}", tx.status);
         if proto == Proto::Ymodem {
             // the receiver waits for the next file header after the batch ends: finish it
-            assert!(rx.done || rx.status.contains("next"), "receiver: {}", rx.status);
+            assert!(
+                rx.done || rx.status.contains("next"),
+                "receiver: {}",
+                rx.status
+            );
             let got = std::fs::read(dst.join("source.bin")).unwrap();
             assert_eq!(got, data);
         } else {
@@ -655,13 +734,21 @@ mod real {
     }
 
     fn payload() -> Vec<u8> {
-        (0..200_000u32).map(|i| (i.wrapping_mul(2654435761) >> 13) as u8).collect()
+        (0..200_000u32)
+            .map(|i| (i.wrapping_mul(2654435761) >> 13) as u8)
+            .collect()
     }
 
     /// Start `cmd` (a shell line run in `dir` inside WSL) and let `t` talk to it until done.
     fn drive(dir: &Path, cmd: &str, t: &mut Transfer) -> String {
         let line = format!("cd '{}' && PATH={TOOLS}:$PATH {cmd}", wsl_path(dir));
-        let mut child = Command::new("wsl.exe").args(["-e", "sh", "-c", &line]).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
+        let mut child = Command::new("wsl.exe")
+            .args(["-e", "sh", "-c", &line])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
         let mut stdin = child.stdin.take().unwrap();
         let mut stdout = child.stdout.take().unwrap();
         let mut stderr = child.stderr.take().unwrap();
@@ -712,12 +799,23 @@ mod real {
         while let Ok(d) = erx.try_recv() {
             log.extend(d);
         }
-        format!("{} | {} | trace:\n{}", t.status, String::from_utf8_lossy(&log).trim(), trace.join("\n"))
+        format!(
+            "{} | {} | trace:\n{}",
+            t.status,
+            String::from_utf8_lossy(&log).trim(),
+            trace.join("\n")
+        )
     }
 
     fn check(name: &str, t: &Transfer, info: &str, out_file: &Path, want: &[u8]) {
         let got = std::fs::read(out_file).unwrap_or_default();
-        println!("{name}: done={} failed={} bytes={} -> {}", t.done, t.failed, got.len(), info);
+        println!(
+            "{name}: done={} failed={} bytes={} -> {}",
+            t.done,
+            t.failed,
+            got.len(),
+            info
+        );
         assert!(t.done && !t.failed, "{name}: {info}");
         assert_eq!(got.len(), want.len(), "{name}: size");
         assert!(got == want, "{name}: content differs");
@@ -731,7 +829,13 @@ mod real {
         std::fs::write(d.join("in").join("file.bin"), &data).unwrap();
         let mut t = Transfer::new_zmodem_receive(d.join("out"));
         let info = drive(&d.join("in"), "sz -b file.bin", &mut t);
-        check("sz -> Yetty", &t, &info, &d.join("out").join("file.bin"), &data);
+        check(
+            "sz -> Yetty",
+            &t,
+            &info,
+            &d.join("out").join("file.bin"),
+            &data,
+        );
     }
 
     #[test]
@@ -742,7 +846,13 @@ mod real {
         std::fs::write(d.join("in").join("file.bin"), &data).unwrap();
         let mut t = Transfer::new_zmodem_receive(d.join("out"));
         let info = drive(&d.join("in"), "sz -b -e file.bin", &mut t);
-        check("sz -e -> Yetty", &t, &info, &d.join("out").join("file.bin"), &data);
+        check(
+            "sz -e -> Yetty",
+            &t,
+            &info,
+            &d.join("out").join("file.bin"),
+            &data,
+        );
     }
 
     #[test]
@@ -754,7 +864,13 @@ mod real {
         std::fs::write(&src, &data).unwrap();
         let mut t = Transfer::new_zmodem_send(vec![src]).unwrap();
         let info = drive(&d.join("out"), "rz -b -y", &mut t);
-        check("Yetty -> rz", &t, &info, &d.join("out").join("file.bin"), &data);
+        check(
+            "Yetty -> rz",
+            &t,
+            &info,
+            &d.join("out").join("file.bin"),
+            &data,
+        );
     }
 
     #[test]
@@ -764,8 +880,18 @@ mod real {
         let data = payload();
         std::fs::write(d.join("in").join("file.bin"), &data).unwrap();
         let mut t = Transfer::new_kermit_receive(d.join("out"));
-        let info = drive(&d.join("in"), "script -qfec \"gkermit -i -s file.bin\" /dev/null", &mut t);
-        check("gkermit -> Yetty", &t, &info, &d.join("out").join("file.bin"), &data);
+        let info = drive(
+            &d.join("in"),
+            "script -qfec \"gkermit -i -s file.bin\" /dev/null",
+            &mut t,
+        );
+        check(
+            "gkermit -> Yetty",
+            &t,
+            &info,
+            &d.join("out").join("file.bin"),
+            &data,
+        );
     }
 
     #[test]
@@ -776,7 +902,17 @@ mod real {
         let src = d.join("in").join("file.bin");
         std::fs::write(&src, &data).unwrap();
         let mut t = Transfer::new_kermit_send(&src).unwrap();
-        let info = drive(&d.join("out"), "script -qfec \"gkermit -i -r\" /dev/null", &mut t);
-        check("Yetty -> gkermit", &t, &info, &d.join("out").join("file.bin"), &data);
+        let info = drive(
+            &d.join("out"),
+            "script -qfec \"gkermit -i -r\" /dev/null",
+            &mut t,
+        );
+        check(
+            "Yetty -> gkermit",
+            &t,
+            &info,
+            &d.join("out").join("file.bin"),
+            &data,
+        );
     }
 }

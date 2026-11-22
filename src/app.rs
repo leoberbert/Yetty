@@ -143,8 +143,17 @@ impl Node {
         if let Some(i) = self.children.iter().position(|c| c.name == name) {
             return &mut self.children[i];
         }
-        let path = if self.path.is_empty() { name.to_string() } else { format!("{}/{}", self.path, name) };
-        self.children.push(Node { name: name.to_string(), path, children: Vec::new(), sessions: Vec::new() });
+        let path = if self.path.is_empty() {
+            name.to_string()
+        } else {
+            format!("{}/{}", self.path, name)
+        };
+        self.children.push(Node {
+            name: name.to_string(),
+            path,
+            children: Vec::new(),
+            sessions: Vec::new(),
+        });
         self.children.last_mut().unwrap()
     }
 }
@@ -174,7 +183,12 @@ fn tree_set_open(list: &mut Vec<String>, path: &str, is_root: bool, open: bool) 
 }
 
 fn build_tree(sessions: &[SessionConfig], folders: &[String], filter: &str, order: u8) -> Node {
-    let mut root = Node { name: "Sessions".into(), path: String::new(), children: Vec::new(), sessions: Vec::new() };
+    let mut root = Node {
+        name: "Sessions".into(),
+        path: String::new(),
+        children: Vec::new(),
+        sessions: Vec::new(),
+    };
     let f = filter.to_lowercase();
     if f.is_empty() {
         for p in folders {
@@ -185,7 +199,11 @@ fn build_tree(sessions: &[SessionConfig], folders: &[String], filter: &str, orde
         }
     }
     for (i, s) in sessions.iter().enumerate() {
-        if !f.is_empty() && !(s.display_name().to_lowercase().contains(&f) || s.folder.to_lowercase().contains(&f) || s.host.to_lowercase().contains(&f)) {
+        if !f.is_empty()
+            && !(s.display_name().to_lowercase().contains(&f)
+                || s.folder.to_lowercase().contains(&f)
+                || s.host.to_lowercase().contains(&f))
+        {
             continue;
         }
         let mut n = &mut root;
@@ -241,10 +259,13 @@ fn natural_cmp(a: &str, b: &str) -> std::cmp::Ordering {
 fn sort_tree(n: &mut Node, sessions: &[SessionConfig], natural: bool) {
     if natural {
         n.children.sort_by(|a, b| natural_cmp(&a.name, &b.name));
-        n.sessions.sort_by(|&a, &b| natural_cmp(&sessions[a].display_name(), &sessions[b].display_name()));
+        n.sessions.sort_by(|&a, &b| {
+            natural_cmp(&sessions[a].display_name(), &sessions[b].display_name())
+        });
     } else {
         n.children.sort_by_key(|c| c.name.to_lowercase());
-        n.sessions.sort_by_key(|&i| sessions[i].display_name().to_lowercase());
+        n.sessions
+            .sort_by_key(|&i| sessions[i].display_name().to_lowercase());
     }
     for c in &mut n.children {
         sort_tree(c, sessions, natural);
@@ -256,9 +277,33 @@ fn draw_node(ui: &mut egui::Ui, node: &Node, c: &mut TreeCtx, is_root: bool) {
     let title = {
         let font = egui::TextStyle::Body.resolve(ui.style());
         let mut job = egui::text::LayoutJob::default();
-        job.append("\u{1F4C1}", 0.0, egui::text::TextFormat { font_id: egui::FontId::new(14.0, egui::FontFamily::Name("symbols".into())), color: Color32::from_rgb(0xff, 0xc8, 0x3d), ..Default::default() });
-        job.append(" ", 0.0, egui::text::TextFormat { font_id: font.clone(), color: Color32::PLACEHOLDER, ..Default::default() });
-        job.append(&node.name, 0.0, egui::text::TextFormat { font_id: font, color: Color32::PLACEHOLDER, ..Default::default() });
+        job.append(
+            "\u{1F4C1}",
+            0.0,
+            egui::text::TextFormat {
+                font_id: egui::FontId::new(14.0, egui::FontFamily::Name("symbols".into())),
+                color: Color32::from_rgb(0xff, 0xc8, 0x3d),
+                ..Default::default()
+            },
+        );
+        job.append(
+            " ",
+            0.0,
+            egui::text::TextFormat {
+                font_id: font.clone(),
+                color: Color32::PLACEHOLDER,
+                ..Default::default()
+            },
+        );
+        job.append(
+            &node.name,
+            0.0,
+            egui::text::TextFormat {
+                font_id: font,
+                color: Color32::PLACEHOLDER,
+                ..Default::default()
+            },
+        );
         job
     };
     let want = if c.filtering {
@@ -268,7 +313,9 @@ fn draw_node(ui: &mut egui::Ui, node: &Node, c: &mut TreeCtx, is_root: bool) {
     } else {
         c.open_list.iter().any(|x| x == &node.path)
     };
-    let mut header = egui::CollapsingHeader::new(title).id_salt(id).open(Some(want));
+    let mut header = egui::CollapsingHeader::new(title)
+        .id_salt(id)
+        .open(Some(want));
     if let Some(e) = c.expand {
         let o = e || is_root;
         tree_set_open(&mut c.open_list, &node.path, is_root, o);
@@ -285,17 +332,40 @@ fn draw_node(ui: &mut egui::Ui, node: &Node, c: &mut TreeCtx, is_root: bool) {
             let label = {
                 let font = egui::TextStyle::Body.resolve(ui.style());
                 let mut job = egui::text::LayoutJob::default();
-                job.append("\u{E756} ", 0.0, egui::text::TextFormat { font_id: font.clone(), color: Color32::PLACEHOLDER, ..Default::default() });
-                job.append(&s.display_name(), 0.0, egui::text::TextFormat { font_id: font, color: Color32::PLACEHOLDER, ..Default::default() });
+                job.append(
+                    "\u{E756} ",
+                    0.0,
+                    egui::text::TextFormat {
+                        font_id: font.clone(),
+                        color: Color32::PLACEHOLDER,
+                        ..Default::default()
+                    },
+                );
+                job.append(
+                    &s.display_name(),
+                    0.0,
+                    egui::text::TextFormat {
+                        font_id: font,
+                        color: Color32::PLACEHOLDER,
+                        ..Default::default()
+                    },
+                );
                 job
             };
-            let r = ui.selectable_label(sel, label).interact(egui::Sense::click_and_drag());
+            let r = ui
+                .selectable_label(sel, label)
+                .interact(egui::Sense::click_and_drag());
             if r.dragged() {
                 egui::DragAndDrop::set_payload(ui.ctx(), DragItem::Session(i));
                 ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
             }
             if r.dnd_hover_payload::<DragItem>().is_some() {
-                ui.painter().rect_stroke(r.rect, 2.0, egui::Stroke::new(1.0, Color32::from_rgb(0x00, 0x78, 0xd4)), egui::StrokeKind::Inside);
+                ui.painter().rect_stroke(
+                    r.rect,
+                    2.0,
+                    egui::Stroke::new(1.0, Color32::from_rgb(0x00, 0x78, 0xd4)),
+                    egui::StrokeKind::Inside,
+                );
             }
             if let Some(p) = r.dnd_release_payload::<DragItem>() {
                 // dropped on a session: it goes into that session's folder
@@ -310,7 +380,11 @@ fn draw_node(ui: &mut egui::Ui, node: &Node, c: &mut TreeCtx, is_root: bool) {
                 c.act = Some(TreeAct::Connect(i));
             }
             let r = if c.show_desc {
-                let tip = if s.description.trim().is_empty() { format!("Hostname: {}", s.host) } else { format!("{}\nHostname: {}", s.description, s.host) };
+                let tip = if s.description.trim().is_empty() {
+                    format!("Hostname: {}", s.host)
+                } else {
+                    format!("{}\nHostname: {}", s.description, s.host)
+                };
                 r.on_hover_text(tip)
             } else {
                 r
@@ -328,7 +402,12 @@ fn draw_node(ui: &mut egui::Ui, node: &Node, c: &mut TreeCtx, is_root: bool) {
         ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
     }
     if hr.dnd_hover_payload::<DragItem>().is_some() {
-        ui.painter().rect_stroke(hr.rect, 2.0, egui::Stroke::new(1.5, Color32::from_rgb(0x00, 0x78, 0xd4)), egui::StrokeKind::Inside);
+        ui.painter().rect_stroke(
+            hr.rect,
+            2.0,
+            egui::Stroke::new(1.5, Color32::from_rgb(0x00, 0x78, 0xd4)),
+            egui::StrokeKind::Inside,
+        );
     }
     if let Some(p) = hr.dnd_release_payload::<DragItem>() {
         c.act = Some(TreeAct::Move((*p).clone(), node.path.clone()));
@@ -343,7 +422,10 @@ fn draw_node(ui: &mut egui::Ui, node: &Node, c: &mut TreeCtx, is_root: bool) {
             c.act = Some(TreeAct::NewFolder);
             ui.close();
         }
-        if ui.add_enabled(c.has_clip, egui::Button::new("Paste")).clicked() {
+        if ui
+            .add_enabled(c.has_clip, egui::Button::new("Paste"))
+            .clicked()
+        {
             c.selected_folder = Some(node.path.clone());
             c.act = Some(TreeAct::Paste);
             ui.close();
@@ -393,7 +475,13 @@ fn menu_icon(text: &str) -> &'static str {
 
 /// A menu item: icon column (blank when the item has no picture), text and shortcut, as in the original's menus.
 fn mi(ui: &mut egui::Ui, text: &str, sc: &str, enabled: bool) -> bool {
-    mi_with_icon(ui, menu_icon(text.trim_start_matches(['✓', ' '])), text, sc, enabled)
+    mi_with_icon(
+        ui,
+        menu_icon(text.trim_start_matches(['✓', ' '])),
+        text,
+        sc,
+        enabled,
+    )
 }
 
 /// A menu item with an empty icon column: the original's tab menu has no pictures.
@@ -403,7 +491,9 @@ fn mi_plain(ui: &mut egui::Ui, text: &str, enabled: bool) -> bool {
 
 fn mi_with_icon(ui: &mut egui::Ui, icon: &str, text: &str, sc: &str, enabled: bool) -> bool {
     use egui::AtomExt;
-    let icon = RichText::new(icon).size(12.5).atom_size(egui::vec2(18.0, 14.0));
+    let icon = RichText::new(icon)
+        .size(12.5)
+        .atom_size(egui::vec2(18.0, 14.0));
     let (job, mnemonic) = mnemonic_job(ui, text, enabled, true);
     let mut b = match job {
         Some(job) => egui::Button::new((icon, egui::WidgetText::from(job))),
@@ -426,20 +516,48 @@ fn mi_with_icon(ui: &mut egui::Ui, icon: &str, text: &str, sc: &str, enabled: bo
 }
 
 /// The caption as a text with its mnemonic letter underlined (None when the caption has no mnemonic); the letter too.
-fn mnemonic_job(ui: &egui::Ui, text: &str, enabled: bool, show: bool) -> (Option<egui::text::LayoutJob>, Option<char>) {
+fn mnemonic_job(
+    ui: &egui::Ui,
+    text: &str,
+    enabled: bool,
+    show: bool,
+) -> (Option<egui::text::LayoutJob>, Option<char>) {
     let rest = text.trim_start_matches(['✓', ' ']);
     let lead = &text[..text.len() - rest.len()];
-    let Some((idx, letter)) = crate::mnemonics::lookup(rest) else { return (None, None) };
-    if !show || !ui.ctx().data(|d| d.get_temp::<bool>(egui::Id::new("mnemonics_visible"))).unwrap_or(false) {
+    let Some((idx, letter)) = crate::mnemonics::lookup(rest) else {
+        return (None, None);
+    };
+    if !show
+        || !ui
+            .ctx()
+            .data(|d| d.get_temp::<bool>(egui::Id::new("mnemonics_visible")))
+            .unwrap_or(false)
+    {
         return (None, Some(letter));
     }
-    let color = if enabled { ui.visuals().text_color() } else { ui.visuals().widgets.noninteractive.fg_stroke.color };
+    let color = if enabled {
+        ui.visuals().text_color()
+    } else {
+        ui.visuals().widgets.noninteractive.fg_stroke.color
+    };
     let font_id = egui::TextStyle::Button.resolve(ui.style());
-    let plain = egui::text::TextFormat { font_id: font_id.clone(), color: Color32::PLACEHOLDER, ..Default::default() };
-    let under = egui::text::TextFormat { font_id, color: Color32::PLACEHOLDER, underline: egui::Stroke::new(1.0, color), ..Default::default() };
+    let plain = egui::text::TextFormat {
+        font_id: font_id.clone(),
+        color: Color32::PLACEHOLDER,
+        ..Default::default()
+    };
+    let under = egui::text::TextFormat {
+        font_id,
+        color: Color32::PLACEHOLDER,
+        underline: egui::Stroke::new(1.0, color),
+        ..Default::default()
+    };
     let chars: Vec<char> = rest.chars().collect();
     let mut job = egui::text::LayoutJob::default();
-    let before: String = lead.chars().chain(chars[..idx.min(chars.len())].iter().copied()).collect();
+    let before: String = lead
+        .chars()
+        .chain(chars[..idx.min(chars.len())].iter().copied())
+        .collect();
     job.append(&before, 0.0, plain.clone());
     if let Some(c) = chars.get(idx) {
         job.append(&c.to_string(), 0.0, under);
@@ -451,13 +569,24 @@ fn mnemonic_job(ui: &egui::Ui, text: &str, enabled: bool, show: bool) -> (Option
 
 /// A menu bar title with its mnemonic letter underlined while `show`.
 fn bar_title(ctx: &egui::Context, text: &str, show: bool) -> egui::WidgetText {
-    let Some((idx, _)) = crate::mnemonics::lookup(text) else { return text.into() };
+    let Some((idx, _)) = crate::mnemonics::lookup(text) else {
+        return text.into();
+    };
     if !show {
         return text.into();
     }
     let font_id = egui::TextStyle::Button.resolve(&ctx.global_style());
-    let plain = egui::text::TextFormat { font_id: font_id.clone(), color: Color32::PLACEHOLDER, ..Default::default() };
-    let under = egui::text::TextFormat { font_id, color: Color32::PLACEHOLDER, underline: egui::Stroke::new(1.0, ctx.global_style().visuals.text_color()), ..Default::default() };
+    let plain = egui::text::TextFormat {
+        font_id: font_id.clone(),
+        color: Color32::PLACEHOLDER,
+        ..Default::default()
+    };
+    let under = egui::text::TextFormat {
+        font_id,
+        color: Color32::PLACEHOLDER,
+        underline: egui::Stroke::new(1.0, ctx.global_style().visuals.text_color()),
+        ..Default::default()
+    };
     let chars: Vec<char> = text.chars().collect();
     let mut job = egui::text::LayoutJob::default();
     job.append(&chars[..idx].iter().collect::<String>(), 0.0, plain.clone());
@@ -468,9 +597,11 @@ fn bar_title(ctx: &egui::Context, text: &str, show: bool) -> egui::WidgetText {
 
 /// A submenu inside a menu, with the same empty icon column as the items so its text lines up with theirs.
 fn sub_menu(ui: &mut egui::Ui, text: &str, add: impl FnOnce(&mut egui::Ui)) {
-    use egui::AtomExt;
     use egui::containers::menu::{MenuState, SubMenu};
-    let icon = RichText::new("").size(12.5).atom_size(egui::vec2(18.0, 14.0));
+    use egui::AtomExt;
+    let icon = RichText::new("")
+        .size(12.5)
+        .atom_size(egui::vec2(18.0, 14.0));
     let (job, mnemonic) = mnemonic_job(ui, text, true, true);
     let label: egui::WidgetText = match job {
         Some(job) => job.into(),
@@ -494,12 +625,18 @@ fn mnemonic_pressed(ui: &egui::Ui, letter: char) -> bool {
     if egui::containers::menu::MenuState::from_ui(ui, |state, _| state.open_item.is_some()) {
         return false;
     }
-    let Some(key) = egui::Key::from_name(&letter.to_ascii_uppercase().to_string()).or_else(|| egui::Key::from_name(&letter.to_string())) else { return false };
+    let Some(key) = egui::Key::from_name(&letter.to_ascii_uppercase().to_string())
+        .or_else(|| egui::Key::from_name(&letter.to_string()))
+    else {
+        return false;
+    };
     let letter_s = letter.to_string();
     ui.input_mut(|i| {
         let p = i.consume_key(egui::Modifiers::NONE, key);
         if p {
-            i.events.retain(|e| !matches!(e, egui::Event::Text(t) if t.eq_ignore_ascii_case(&letter_s)));
+            i.events.retain(
+                |e| !matches!(e, egui::Event::Text(t) if t.eq_ignore_ascii_case(&letter_s)),
+            );
         }
         p
     })
@@ -512,7 +649,9 @@ fn mcheck(ui: &mut egui::Ui, value: &mut bool, text: &str, enabled: bool) -> boo
         Some(job) => job.into(),
         None => text.into(),
     };
-    let mut hit = ui.add_enabled(enabled, egui::Checkbox::new(value, label)).clicked();
+    let mut hit = ui
+        .add_enabled(enabled, egui::Checkbox::new(value, label))
+        .clicked();
     if enabled && !hit {
         if let Some(letter) = mnemonic {
             if mnemonic_pressed(ui, letter) {
@@ -562,7 +701,9 @@ enum CmdAct {
 
 /// Start another Yetty window that connects like this session (Clone in New Window, Send to New Window).
 fn spawn_window_for(cfg: &SessionConfig) {
-    let Ok(exe) = std::env::current_exe() else { return };
+    let Ok(exe) = std::env::current_exe() else {
+        return;
+    };
     let mut args: Vec<String> = Vec::new();
     match cfg.protocol {
         Protocol::LocalShell => args.push("local".into()),
@@ -581,7 +722,11 @@ fn spawn_window_for(cfg: &SessionConfig) {
                 _ => "ssh",
             };
             args.push(word.into());
-            let user = if cfg.username.trim().is_empty() { String::new() } else { format!("{}@", cfg.username.trim()) };
+            let user = if cfg.username.trim().is_empty() {
+                String::new()
+            } else {
+                format!("{}@", cfg.username.trim())
+            };
             args.push(format!("{user}{}:{}", cfg.host.trim(), cfg.port));
         }
     }
@@ -589,13 +734,33 @@ fn spawn_window_for(cfg: &SessionConfig) {
 }
 
 fn cmd_icon_color(name: &str) -> Color32 {
-    config::COMMAND_COLORS.iter().find(|c| c.0 == name).map(|c| Color32::from_rgb(c.1[0], c.1[1], c.1[2])).unwrap_or(Color32::from_rgb(0x16, 0xc6, 0x0c))
+    config::COMMAND_COLORS
+        .iter()
+        .find(|c| c.0 == name)
+        .map(|c| Color32::from_rgb(c.1[0], c.1[1], c.1[2]))
+        .unwrap_or(Color32::from_rgb(0x16, 0xc6, 0x0c))
 }
 
 /// One folder of the Command Manager tree (folders first, then its commands).
 #[allow(clippy::too_many_arguments)]
-fn cmd_tree_node(ui: &mut egui::Ui, st: &Settings, path: &str, filter: &str, sel: &mut Option<usize>, sel_folder: &mut Option<String>, act: &mut Option<CmdAct>, force: Option<bool>, can_paste: bool, target: u8, closed_change: &mut Vec<(String, bool)>) {
-    let parent_of = |f: &str| f.rsplit_once('/').map(|x| x.0.to_string()).unwrap_or_default();
+fn cmd_tree_node(
+    ui: &mut egui::Ui,
+    st: &Settings,
+    path: &str,
+    filter: &str,
+    sel: &mut Option<usize>,
+    sel_folder: &mut Option<String>,
+    act: &mut Option<CmdAct>,
+    force: Option<bool>,
+    can_paste: bool,
+    target: u8,
+    closed_change: &mut Vec<(String, bool)>,
+) {
+    let parent_of = |f: &str| {
+        f.rsplit_once('/')
+            .map(|x| x.0.to_string())
+            .unwrap_or_default()
+    };
     let mut folders: Vec<String> = Vec::new();
     let add_with_parents = |f: &str, list: &mut Vec<String>| {
         let mut cur = String::new();
@@ -616,13 +781,26 @@ fn cmd_tree_node(ui: &mut egui::Ui, st: &Settings, path: &str, filter: &str, sel
         add_with_parents(&c.folder, &mut folders);
     }
     folders.sort_by_key(|f| f.to_lowercase());
-    let matches = |c: &config::CommandDef| filter.is_empty() || c.label.to_lowercase().contains(filter) || c.folder.to_lowercase().contains(filter);
+    let matches = |c: &config::CommandDef| {
+        filter.is_empty()
+            || c.label.to_lowercase().contains(filter)
+            || c.folder.to_lowercase().contains(filter)
+    };
     let is_root = path.is_empty();
-    let name = if is_root { "Commands".to_string() } else { path.rsplit('/').next().unwrap_or("").to_string() };
+    let name = if is_root {
+        "Commands".to_string()
+    } else {
+        path.rsplit('/').next().unwrap_or("").to_string()
+    };
     let id = ui.make_persistent_id(("cmd_folder", path));
-    let mut state = egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, true);
+    let mut state =
+        egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, true);
     // open or closed as the person left it (kept in the settings)
-    let key = if is_root { "<root>".to_string() } else { path.to_string() };
+    let key = if is_root {
+        "<root>".to_string()
+    } else {
+        path.to_string()
+    };
     let mut wanted = !st.cmd_tree_closed.contains(&key);
     if !filter.is_empty() {
         wanted = true;
@@ -650,7 +828,19 @@ fn cmd_tree_node(ui: &mut egui::Ui, st: &Settings, path: &str, filter: &str, sel
     }
     header.body(|ui| {
         for f in folders.iter().filter(|f| parent_of(f) == path) {
-            cmd_tree_node(ui, st, f, filter, sel, sel_folder, act, force, can_paste, target, closed_change);
+            cmd_tree_node(
+                ui,
+                st,
+                f,
+                filter,
+                sel,
+                sel_folder,
+                act,
+                force,
+                can_paste,
+                target,
+                closed_change,
+            );
         }
         for (i, c) in st.commands.iter().enumerate() {
             if c.folder.trim_matches('/') != path || !matches(c) {
@@ -658,11 +848,16 @@ fn cmd_tree_node(ui: &mut egui::Ui, st: &Settings, path: &str, filter: &str, sel
             }
             ui.horizontal(|ui| {
                 let (dot, _) = ui.allocate_exact_size(egui::vec2(12.0, 12.0), Sense::hover());
-                ui.painter().circle_filled(dot.center(), 5.0, cmd_icon_color(&c.color));
+                ui.painter()
+                    .circle_filled(dot.center(), 5.0, cmd_icon_color(&c.color));
                 let selected = *sel == Some(i);
                 let mut r = ui.selectable_label(selected, &c.label);
                 if !c.disable_tooltip {
-                    let tip = if c.description.trim().is_empty() { c.text.clone() } else { c.description.clone() };
+                    let tip = if c.description.trim().is_empty() {
+                        c.text.clone()
+                    } else {
+                        c.description.clone()
+                    };
                     r = r.on_hover_text(tip);
                 }
                 if r.clicked() || r.secondary_clicked() {
@@ -683,7 +878,14 @@ fn cmd_tree_node(ui: &mut egui::Ui, st: &Settings, path: &str, filter: &str, sel
 }
 
 /// The right-click menu of the Command Manager (a command when `cmd` is given, else a folder).
-fn cmd_menu(ui: &mut egui::Ui, cmd: Option<usize>, act: &mut Option<CmdAct>, can_paste: bool, target: u8, is_root: bool) {
+fn cmd_menu(
+    ui: &mut egui::Ui,
+    cmd: Option<usize>,
+    act: &mut Option<CmdAct>,
+    can_paste: bool,
+    target: u8,
+    is_root: bool,
+) {
     ui.set_min_width(250.0);
     let on_cmd = cmd.is_some();
     if mi(ui, "Send Command", "Enter", on_cmd) {
@@ -692,8 +894,17 @@ fn cmd_menu(ui: &mut egui::Ui, cmd: Option<usize>, act: &mut Option<CmdAct>, can
     }
     sub_menu(ui, "Send Command to", |ui| {
         ui.set_min_width(200.0);
-        for (n, label) in [(0u8, "Active Session"), (1, "All Sessions"), (2, "Visible Sessions")] {
-            if mi(ui, &format!("{}{label}", if target == n { "✓ " } else { "   " }), "", true) {
+        for (n, label) in [
+            (0u8, "Active Session"),
+            (1, "All Sessions"),
+            (2, "Visible Sessions"),
+        ] {
+            if mi(
+                ui,
+                &format!("{}{label}", if target == n { "✓ " } else { "   " }),
+                "",
+                true,
+            ) {
                 *act = Some(CmdAct::Target(n));
                 ui.close();
             }
@@ -743,7 +954,12 @@ fn session_menu(ui: &mut egui::Ui, c: &mut TreeCtx, i: usize) {
     if mi(ui, "Connect Terminal", "Ctrl+Alt+T", true) {
         act = Some(TreeAct::Connect(i));
     }
-    if mi(ui, "Connect SFTP Session", "Ctrl+Alt+S", c.sessions[i].protocol.is_ssh()) {
+    if mi(
+        ui,
+        "Connect SFTP Session",
+        "Ctrl+Alt+S",
+        c.sessions[i].protocol.is_ssh(),
+    ) {
         act = Some(TreeAct::ConnectSftp(i));
     }
     if mi(ui, "Connect in New Window", "Ctrl+Alt+W", true) {
@@ -844,7 +1060,10 @@ fn install_fallback_fonts(ctx: &egui::Context) {
     ] {
         let path = std::path::Path::new(&windir).join("Fonts").join(file);
         if let Ok(bytes) = std::fs::read(&path) {
-            fonts.font_data.insert(name.to_string(), std::sync::Arc::new(egui::FontData::from_owned(bytes)));
+            fonts.font_data.insert(
+                name.to_string(),
+                std::sync::Arc::new(egui::FontData::from_owned(bytes)),
+            );
             if let Some(list) = fonts.families.get_mut(&fam) {
                 list.insert(0, name.to_string());
             }
@@ -854,14 +1073,29 @@ fn install_fallback_fonts(ctx: &egui::Context) {
     for (name, file) in candidates {
         let path = std::path::Path::new(&windir).join("Fonts").join(file);
         if let Ok(bytes) = std::fs::read(&path) {
-            fonts.font_data.insert(name.to_string(), std::sync::Arc::new(egui::FontData::from_owned(bytes)));
+            fonts.font_data.insert(
+                name.to_string(),
+                std::sync::Arc::new(egui::FontData::from_owned(bytes)),
+            );
             added.push(name.to_string());
         }
     }
     // a family for the folder picture: Segoe UI Symbol first (a filled folder), then the usual fonts
-    let mut sym: Vec<String> = added.iter().filter(|n| n.as_str() == "fb_symbols").cloned().collect();
-    sym.extend(fonts.families.get(&egui::FontFamily::Proportional).cloned().unwrap_or_default());
-    fonts.families.insert(egui::FontFamily::Name("symbols".into()), sym);
+    let mut sym: Vec<String> = added
+        .iter()
+        .filter(|n| n.as_str() == "fb_symbols")
+        .cloned()
+        .collect();
+    sym.extend(
+        fonts
+            .families
+            .get(&egui::FontFamily::Proportional)
+            .cloned()
+            .unwrap_or_default(),
+    );
+    fonts
+        .families
+        .insert(egui::FontFamily::Name("symbols".into()), sym);
     for fam in [egui::FontFamily::Monospace, egui::FontFamily::Proportional] {
         if let Some(list) = fonts.families.get_mut(&fam) {
             list.extend(added.iter().cloned());
@@ -882,41 +1116,89 @@ fn side_tab(ui: &mut egui::Ui, text: &str, selected: bool) -> egui::Response {
     let (len, h) = (galley.size().x, galley.size().y);
     let (rect, resp) = ui.allocate_exact_size(egui::vec2(18.0, len + 20.0), Sense::click());
     if selected || resp.hovered() {
-        ui.painter().rect_filled(rect, 0.0, if dark { Color32::from_rgb(0x3a, 0x3a, 0x3a) } else { Color32::from_rgb(0xc8, 0xc8, 0xc8) });
+        ui.painter().rect_filled(
+            rect,
+            0.0,
+            if dark {
+                Color32::from_rgb(0x3a, 0x3a, 0x3a)
+            } else {
+                Color32::from_rgb(0xc8, 0xc8, 0xc8)
+            },
+        );
     }
     let pos = Pos2::new(rect.center().x + h / 2.0, rect.min.y + 10.0);
-    ui.painter().add(egui::epaint::TextShape::new(pos, galley, color).with_angle(std::f32::consts::FRAC_PI_2));
+    ui.painter().add(
+        egui::epaint::TextShape::new(pos, galley, color).with_angle(std::f32::consts::FRAC_PI_2),
+    );
     resp
 }
 
 fn icon_button(ui: &mut egui::Ui, glyph: &str, tip: &str, enabled: bool) -> bool {
-    let color = if ui.visuals().dark_mode { Color32::WHITE } else { Color32::from_gray(30) };
-    let b = egui::Button::new(RichText::new(glyph).size(15.0).color(color)).frame(false).min_size(egui::vec2(24.0, 24.0));
+    let color = if ui.visuals().dark_mode {
+        Color32::WHITE
+    } else {
+        Color32::from_gray(30)
+    };
+    let b = egui::Button::new(RichText::new(glyph).size(15.0).color(color))
+        .frame(false)
+        .min_size(egui::vec2(24.0, 24.0));
     ui.add_enabled(enabled, b).on_hover_text(tip).clicked()
 }
 
 fn tb_sep(ui: &mut egui::Ui) {
     let (r, _) = ui.allocate_exact_size(egui::vec2(9.0, 20.0), Sense::hover());
-    ui.painter().vline(r.center().x, r.y_range(), egui::Stroke::new(1.0, Color32::from_gray(0x48)));
+    ui.painter().vline(
+        r.center().x,
+        r.y_range(),
+        egui::Stroke::new(1.0, Color32::from_gray(0x48)),
+    );
 }
 
 fn palette(theme: &str) -> (bool, Color32, Color32) {
     // (dark, panel, central/background)
     match theme {
-        "Carbon" => (true, Color32::from_rgb(0x1b, 0x1b, 0x1b), Color32::from_rgb(0x16, 0x16, 0x16)),
-        "VS Blue" => (true, Color32::from_rgb(0x29, 0x39, 0x55), Color32::from_rgb(0x1f, 0x2b, 0x40)),
-        "System" | "Native" | "VS White" | "Office White" => (false, Color32::from_rgb(0xf0, 0xf0, 0xf0), Color32::from_rgb(0xab, 0xab, 0xab)),
-        _ => (true, Color32::from_rgb(0x1f, 0x1f, 0x1f), Color32::from_rgb(0x1f, 0x1f, 0x1f)),
+        "Carbon" => (
+            true,
+            Color32::from_rgb(0x1b, 0x1b, 0x1b),
+            Color32::from_rgb(0x16, 0x16, 0x16),
+        ),
+        "VS Blue" => (
+            true,
+            Color32::from_rgb(0x29, 0x39, 0x55),
+            Color32::from_rgb(0x1f, 0x2b, 0x40),
+        ),
+        "System" | "Native" | "VS White" | "Office White" => (
+            false,
+            Color32::from_rgb(0xf0, 0xf0, 0xf0),
+            Color32::from_rgb(0xab, 0xab, 0xab),
+        ),
+        _ => (
+            true,
+            Color32::from_rgb(0x1f, 0x1f, 0x1f),
+            Color32::from_rgb(0x1f, 0x1f, 0x1f),
+        ),
     }
 }
 
 pub fn apply_theme(ctx: &egui::Context, theme: &str) {
     let (dark, panel, _) = palette(theme);
-    let mut v = if dark { egui::Visuals::dark() } else { egui::Visuals::light() };
+    let mut v = if dark {
+        egui::Visuals::dark()
+    } else {
+        egui::Visuals::light()
+    };
     v.panel_fill = panel;
     v.window_fill = panel;
-    v.extreme_bg_color = if dark { Color32::from_rgb(0x2b, 0x2b, 0x2b) } else { Color32::WHITE };
-    v.faint_bg_color = if dark { Color32::from_rgb(0x28, 0x28, 0x28) } else { Color32::from_rgb(0xe8, 0xe8, 0xe8) };
+    v.extreme_bg_color = if dark {
+        Color32::from_rgb(0x2b, 0x2b, 0x2b)
+    } else {
+        Color32::WHITE
+    };
+    v.faint_bg_color = if dark {
+        Color32::from_rgb(0x28, 0x28, 0x28)
+    } else {
+        Color32::from_rgb(0xe8, 0xe8, 0xe8)
+    };
     v.selection.bg_fill = Color32::from_rgb(0x00, 0x63, 0xb1);
     v.selection.stroke = egui::Stroke::new(1.0, Color32::WHITE);
     v.window_corner_radius = egui::CornerRadius::same(2);
@@ -944,11 +1226,16 @@ pub fn apply_theme(ctx: &egui::Context, theme: &str) {
     ctx.set_visuals(v);
     ctx.global_style_mut(|s| {
         use egui::{FontId, TextStyle};
-        s.text_styles.insert(TextStyle::Body, FontId::proportional(12.0));
-        s.text_styles.insert(TextStyle::Button, FontId::proportional(12.0));
-        s.text_styles.insert(TextStyle::Small, FontId::proportional(11.0));
-        s.text_styles.insert(TextStyle::Heading, FontId::proportional(12.0));
-        s.text_styles.insert(TextStyle::Monospace, FontId::monospace(12.0));
+        s.text_styles
+            .insert(TextStyle::Body, FontId::proportional(12.0));
+        s.text_styles
+            .insert(TextStyle::Button, FontId::proportional(12.0));
+        s.text_styles
+            .insert(TextStyle::Small, FontId::proportional(11.0));
+        s.text_styles
+            .insert(TextStyle::Heading, FontId::proportional(12.0));
+        s.text_styles
+            .insert(TextStyle::Monospace, FontId::monospace(12.0));
         s.spacing.item_spacing = egui::vec2(6.0, 4.0);
         s.spacing.button_padding = egui::vec2(6.0, 2.0);
         s.spacing.menu_margin = egui::Margin::symmetric(2, 3);
@@ -1075,13 +1362,19 @@ impl YettyApp {
 
     /// The tab group of session `i` (0 when it was never sent to another group).
     fn group_index(&self, i: usize) -> usize {
-        let g = self.sessions.get(i).and_then(|s| self.group_of.get(&s.id).copied()).unwrap_or(0);
+        let g = self
+            .sessions
+            .get(i)
+            .and_then(|s| self.group_of.get(&s.id).copied())
+            .unwrap_or(0);
         g.min(self.n_groups.saturating_sub(1))
     }
 
     /// Session indices of tab group `g`, in tab order.
     fn group_members(&self, g: usize) -> Vec<usize> {
-        (0..self.sessions.len()).filter(|&i| self.group_index(i) == g).collect()
+        (0..self.sessions.len())
+            .filter(|&i| self.group_index(i) == g)
+            .collect()
     }
 
     /// Keeps the tab groups consistent after sessions open, close or move: empty groups go away (the
@@ -1118,9 +1411,16 @@ impl YettyApp {
             current[self.group_index(self.active)] = id;
         }
         for (g, cur) in current.iter_mut().enumerate() {
-            let ok = self.index_of(*cur).map(|i| self.group_index(i) == g).unwrap_or(false);
+            let ok = self
+                .index_of(*cur)
+                .map(|i| self.group_index(i) == g)
+                .unwrap_or(false);
             if !ok {
-                *cur = self.group_members(g).first().map(|&i| self.sessions[i].id).unwrap_or(u64::MAX);
+                *cur = self
+                    .group_members(g)
+                    .first()
+                    .map(|&i| self.sessions[i].id)
+                    .unwrap_or(u64::MAX);
             }
         }
         self.group_current = current;
@@ -1138,7 +1438,9 @@ impl YettyApp {
 
     /// Close one tab; a connected session is asked about first.
     fn request_close(&mut self, i: usize) {
-        let Some(s) = self.sessions.get(i) else { return };
+        let Some(s) = self.sessions.get(i) else {
+            return;
+        };
         let (id, connected, name) = (s.id, s.is_connected(), s.title.clone());
         if connected {
             self.ask(format!("You are currently connected to \"{name}\".\nAre you sure you want to disconnect and close it?"), ConfirmAct::CloseTab(id));
@@ -1153,7 +1455,10 @@ impl YettyApp {
                 let (id, name) = (s.id, s.title.clone());
                 // Global Options > General > Dialogs > "Show confirm disconnect dialog"
                 if self.settings.global.confirm_disconnect {
-                    self.ask(format!("Are you sure you want to disconnect from \"{name}\"?"), ConfirmAct::Disconnect(id));
+                    self.ask(
+                        format!("Are you sure you want to disconnect from \"{name}\"?"),
+                        ConfirmAct::Disconnect(id),
+                    );
                 } else {
                     self.sessions[i].disconnect();
                 }
@@ -1173,20 +1478,39 @@ impl YettyApp {
             ConfirmAct::CloseOthers(id) => {
                 if let Some(i) = self.index_of(id) {
                     let g = self.group_index(i);
-                    let gone: Vec<u64> = self.group_members(g).into_iter().filter(|&k| k != i).map(|k| self.sessions[k].id).collect();
+                    let gone: Vec<u64> = self
+                        .group_members(g)
+                        .into_iter()
+                        .filter(|&k| k != i)
+                        .map(|k| self.sessions[k].id)
+                        .collect();
                     self.close_ids(&gone, id);
                 }
             }
             ConfirmAct::CloseRight(id) => {
                 if let Some(i) = self.index_of(id) {
                     let g = self.group_index(i);
-                    let gone: Vec<u64> = self.group_members(g).into_iter().filter(|&k| k > i).map(|k| self.sessions[k].id).collect();
+                    let gone: Vec<u64> = self
+                        .group_members(g)
+                        .into_iter()
+                        .filter(|&k| k > i)
+                        .map(|k| self.sessions[k].id)
+                        .collect();
                     self.close_ids(&gone, id);
                 }
             }
             ConfirmAct::CloseGroup(g) => {
-                let gone: Vec<u64> = self.group_members(g).into_iter().map(|k| self.sessions[k].id).collect();
-                let keep = self.sessions.iter().map(|s| s.id).find(|x| !gone.contains(x)).unwrap_or(u64::MAX);
+                let gone: Vec<u64> = self
+                    .group_members(g)
+                    .into_iter()
+                    .map(|k| self.sessions[k].id)
+                    .collect();
+                let keep = self
+                    .sessions
+                    .iter()
+                    .map(|s| s.id)
+                    .find(|x| !gone.contains(x))
+                    .unwrap_or(u64::MAX);
                 self.close_ids(&gone, keep);
             }
             ConfirmAct::CloseAll => {
@@ -1201,7 +1525,9 @@ impl YettyApp {
             ConfirmAct::DeleteCommand => {
                 if let Some(f) = self.cmd_sel_folder.clone().filter(|f| !f.is_empty()) {
                     let inside = |p: &str| p == f || p.starts_with(&format!("{f}/"));
-                    self.settings.commands.retain(|c| !inside(c.folder.trim_matches('/')));
+                    self.settings
+                        .commands
+                        .retain(|c| !inside(c.folder.trim_matches('/')));
                     self.settings.command_folders.retain(|x| !inside(x));
                     self.cmd_sel_folder = None;
                     self.cmd_sel = None;
@@ -1241,8 +1567,16 @@ impl YettyApp {
         }
     }
 
-    pub fn new(cc: &eframe::CreationContext<'_>, screenshot: Option<String>, connect: Option<String>) -> Self {
-        let mut settings = if screenshot.is_some() { Settings::default() } else { Settings::load() };
+    pub fn new(
+        cc: &eframe::CreationContext<'_>,
+        screenshot: Option<String>,
+        connect: Option<String>,
+    ) -> Self {
+        let mut settings = if screenshot.is_some() {
+            Settings::default()
+        } else {
+            Settings::load()
+        };
         // Global Options > General "Save expanded folder state for session list" off: folders start closed
         if !settings.global.save_tree_state {
             settings.tree_open.clear();
@@ -1392,7 +1726,11 @@ impl YettyApp {
                     if scene != "cmdwin" {
                         app.settings.show_command_manager = true;
                         app.side = Some(Side::CommandManager);
-                        app.settings.commands.push(config::CommandDef { label: "List files".into(), text: "ls -lrt\\r".into(), ..Default::default() });
+                        app.settings.commands.push(config::CommandDef {
+                            label: "List files".into(),
+                            text: "ls -lrt\\r".into(),
+                            ..Default::default()
+                        });
                         app.settings.command_folders.push("Servers".into());
                     }
                     if scene == "cmddlg" {
@@ -1405,9 +1743,17 @@ impl YettyApp {
                     }
                 } else if scene == "keymap" {
                     app.keymap_open = true;
-                    app.settings.default_session.mapped_keys.push(config::MappedKey { key: "Ctrl+F5".into(), func: "Send String".into(), send: "ls\\r".into() });
+                    app.settings
+                        .default_session
+                        .mapped_keys
+                        .push(config::MappedKey {
+                            key: "Ctrl+F5".into(),
+                            func: "Send String".into(),
+                            send: "ls\\r".into(),
+                        });
                     app.keymap_state.ctrl = true;
-                    app.keymap_state.selected = egui::Key::ALL.iter().copied().find(|k| k.name() == "F5");
+                    app.keymap_state.selected =
+                        egui::Key::ALL.iter().copied().find(|k| k.name() == "F5");
                 } else if scene == "hostkey" || scene == "sshpw" {
                     let mut cfg = app.settings.defaults_for(Protocol::LocalShell);
                     cfg.name = "Prompt test".into();
@@ -1457,12 +1803,16 @@ impl YettyApp {
                     cfg.name = "Paste test".into();
                     app.open_session(cfg, &cc.egui_ctx);
                     if let Some(s) = app.sessions.last_mut() {
-                        s.pending_paste = Some("curl https://example.com/a/b/c\recho one\recho two\r".into());
+                        s.pending_paste =
+                            Some("curl https://example.com/a/b/c\recho one\recho two\r".into());
                     }
                 } else if scene == "confirm" {
                     app.side = Some(Side::SessionManager);
                     app.selected = Some(0);
-                    app.ask("Are you sure you want to delete the selected item(s)?", ConfirmAct::DeleteTree);
+                    app.ask(
+                        "Are you sure you want to delete the selected item(s)?",
+                        ConfirmAct::DeleteTree,
+                    );
                 } else if let Some(page) = scene.strip_prefix("options:") {
                     app.side = Some(Side::SessionManager);
                     app.open_options(EditTarget::Saved(0), page);
@@ -1482,7 +1832,13 @@ impl YettyApp {
             let start: Vec<SessionConfig> = match app.settings.global.auto_session {
                 1 => vec![app.settings.defaults_for(Protocol::LocalShell)],
                 2 => app.settings.global.last_sessions.clone(),
-                3 => app.settings.snapshots.iter().find(|s| s.0 == app.settings.global.auto_snapshot).map(|s| s.1.clone()).unwrap_or_default(),
+                3 => app
+                    .settings
+                    .snapshots
+                    .iter()
+                    .find(|s| s.0 == app.settings.global.auto_snapshot)
+                    .map(|s| s.1.clone())
+                    .unwrap_or_default(),
                 _ => Vec::new(),
             };
             for cfg in start {
@@ -1509,7 +1865,13 @@ impl YettyApp {
 
     fn run_connect(&mut self, c: String, ctx: &egui::Context) {
         if let Some(name) = c.strip_prefix("session:") {
-            if let Some(cfg) = self.settings.sessions.iter().find(|s| s.display_name() == name).cloned() {
+            if let Some(cfg) = self
+                .settings
+                .sessions
+                .iter()
+                .find(|s| s.display_name() == name)
+                .cloned()
+            {
                 self.open_session(cfg, ctx);
             }
         } else {
@@ -1520,32 +1882,59 @@ impl YettyApp {
 
     /// The start-up window asking for the configuration passphrase; true while it is still open.
     fn unlock_ui(&mut self, ctx: &egui::Context) -> bool {
-        let Some(mut d) = self.unlock.take() else { return false };
+        let Some(mut d) = self.unlock.take() else {
+            return false;
+        };
         let (mut ok, mut cancel, mut open) = (false, false, true);
-        dialogs::dialog(ctx, "unlock_cfg", "Enter Configuration Passphrase", 380.0, &mut open, false, |ui| {
-            ui.add_space(4.0);
-            ui.label("Enter the passphrase that protects the saved passwords:");
-            ui.add_space(4.0);
-            let r = ui.add(egui::TextEdit::singleline(&mut d.pass).password(true).desired_width(f32::INFINITY));
-            if !r.has_focus() && !r.lost_focus() {
-                r.request_focus();
-            }
-            if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                ok = true;
-            }
-            if !d.err.is_empty() {
-                ui.colored_label(Color32::from_rgb(0xe0, 0x60, 0x60), &d.err);
-            }
-            ui.add_space(6.0);
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.add(egui::Button::new("Cancel").min_size(egui::vec2(72.0, 22.0))).clicked() {
-                    cancel = true;
+        dialogs::dialog(
+            ctx,
+            "unlock_cfg",
+            "Enter Configuration Passphrase",
+            380.0,
+            &mut open,
+            false,
+            |ui| {
+                ui.add_space(4.0);
+                ui.label("Enter the passphrase that protects the saved passwords:");
+                ui.add_space(4.0);
+                let r = ui.add(
+                    egui::TextEdit::singleline(&mut d.pass)
+                        .password(true)
+                        .desired_width(f32::INFINITY),
+                );
+                if !r.has_focus() && !r.lost_focus() {
+                    r.request_focus();
                 }
-                if ui.add(egui::Button::new("OK").min_size(egui::vec2(72.0, 22.0)).stroke(egui::Stroke::new(1.0, Color32::from_rgb(0x00, 0x78, 0xd4)))).clicked() {
+                if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                     ok = true;
                 }
-            });
-        });
+                if !d.err.is_empty() {
+                    ui.colored_label(Color32::from_rgb(0xe0, 0x60, 0x60), &d.err);
+                }
+                ui.add_space(6.0);
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui
+                        .add(egui::Button::new("Cancel").min_size(egui::vec2(72.0, 22.0)))
+                        .clicked()
+                    {
+                        cancel = true;
+                    }
+                    if ui
+                        .add(
+                            egui::Button::new("OK")
+                                .min_size(egui::vec2(72.0, 22.0))
+                                .stroke(egui::Stroke::new(
+                                    1.0,
+                                    Color32::from_rgb(0x00, 0x78, 0xd4),
+                                )),
+                        )
+                        .clicked()
+                    {
+                        ok = true;
+                    }
+                });
+            },
+        );
         if cancel || !open {
             self.exit_ok = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -1573,58 +1962,106 @@ impl YettyApp {
 
     /// Tools > Change Configuration Passphrase: the saved passwords are encrypted again with the new passphrase.
     fn pass_dialog(&mut self, ctx: &egui::Context) {
-        let Some(mut d) = self.pass_dlg.take() else { return };
+        let Some(mut d) = self.pass_dlg.take() else {
+            return;
+        };
         let has_cur = !self.settings.config_passphrase_check.is_empty();
         let (mut ok, mut cancel, mut open) = (false, false, true);
-        dialogs::dialog(ctx, "change_cfg_pass", "Change Configuration Passphrase", 400.0, &mut open, true, |ui| {
-            ui.add_space(4.0);
-            ui.label("The passphrase protects the saved passwords and key passphrases in the settings. It is asked for each time Yetty starts.");
-            ui.add_space(4.0);
-            egui::Grid::new("pass_grid").num_columns(2).spacing([10.0, 6.0]).show(ui, |ui| {
-                if has_cur {
-                    ui.label("Current passphrase:");
-                    ui.add(egui::TextEdit::singleline(&mut d.old).password(true).desired_width(200.0));
-                    ui.end_row();
+        dialogs::dialog(
+            ctx,
+            "change_cfg_pass",
+            "Change Configuration Passphrase",
+            400.0,
+            &mut open,
+            true,
+            |ui| {
+                ui.add_space(4.0);
+                ui.label("The passphrase protects the saved passwords and key passphrases in the settings. It is asked for each time Yetty starts.");
+                ui.add_space(4.0);
+                egui::Grid::new("pass_grid")
+                    .num_columns(2)
+                    .spacing([10.0, 6.0])
+                    .show(ui, |ui| {
+                        if has_cur {
+                            ui.label("Current passphrase:");
+                            ui.add(
+                                egui::TextEdit::singleline(&mut d.old)
+                                    .password(true)
+                                    .desired_width(200.0),
+                            );
+                            ui.end_row();
+                        }
+                        ui.label("New passphrase:");
+                        ui.add(
+                            egui::TextEdit::singleline(&mut d.new)
+                                .password(true)
+                                .desired_width(200.0),
+                        );
+                        ui.end_row();
+                        ui.label("Confirm passphrase:");
+                        ui.add(
+                            egui::TextEdit::singleline(&mut d.confirm)
+                                .password(true)
+                                .desired_width(200.0),
+                        );
+                        ui.end_row();
+                    });
+                ui.weak("Leave the new passphrase empty to remove the passphrase.");
+                if !d.err.is_empty() {
+                    ui.colored_label(Color32::from_rgb(0xe0, 0x60, 0x60), &d.err);
                 }
-                ui.label("New passphrase:");
-                ui.add(egui::TextEdit::singleline(&mut d.new).password(true).desired_width(200.0));
-                ui.end_row();
-                ui.label("Confirm passphrase:");
-                ui.add(egui::TextEdit::singleline(&mut d.confirm).password(true).desired_width(200.0));
-                ui.end_row();
-            });
-            ui.weak("Leave the new passphrase empty to remove the passphrase.");
-            if !d.err.is_empty() {
-                ui.colored_label(Color32::from_rgb(0xe0, 0x60, 0x60), &d.err);
-            }
-            ui.add_space(6.0);
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.add(egui::Button::new("Cancel").min_size(egui::vec2(72.0, 22.0))).clicked() {
-                    cancel = true;
-                }
-                if ui.add(egui::Button::new("OK").min_size(egui::vec2(72.0, 22.0)).stroke(egui::Stroke::new(1.0, Color32::from_rgb(0x00, 0x78, 0xd4)))).clicked() {
-                    ok = true;
-                }
-            });
-        });
+                ui.add_space(6.0);
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui
+                        .add(egui::Button::new("Cancel").min_size(egui::vec2(72.0, 22.0)))
+                        .clicked()
+                    {
+                        cancel = true;
+                    }
+                    if ui
+                        .add(
+                            egui::Button::new("OK")
+                                .min_size(egui::vec2(72.0, 22.0))
+                                .stroke(egui::Stroke::new(
+                                    1.0,
+                                    Color32::from_rgb(0x00, 0x78, 0xd4),
+                                )),
+                        )
+                        .clicked()
+                    {
+                        ok = true;
+                    }
+                });
+            },
+        );
         if cancel || !open {
             return;
         }
         if ok {
-            if has_cur && !config::passphrase_matches(&self.settings.config_passphrase_check, &d.old) {
+            if has_cur
+                && !config::passphrase_matches(&self.settings.config_passphrase_check, &d.old)
+            {
                 d.err = "The current passphrase is not correct.".into();
             } else if d.new != d.confirm {
                 d.err = "The two passphrases are not the same.".into();
             } else {
                 let old = has_cur.then(|| d.old.clone());
-                let new = if d.new.is_empty() { None } else { Some(d.new.clone()) };
+                let new = if d.new.is_empty() {
+                    None
+                } else {
+                    Some(d.new.clone())
+                };
                 self.settings.rekey(old.as_deref(), new.as_deref());
                 for s in &mut self.sessions {
                     s.cfg.rekey_secrets(old.as_deref(), new.as_deref());
                 }
                 config::set_config_passphrase(new.as_deref());
                 self.settings.save();
-                self.status_msg = if new.is_some() { "Configuration passphrase changed".into() } else { "Configuration passphrase removed".into() };
+                self.status_msg = if new.is_some() {
+                    "Configuration passphrase changed".into()
+                } else {
+                    "Configuration passphrase removed".into()
+                };
                 return;
             }
         }
@@ -1646,14 +2083,22 @@ impl YettyApp {
         }
         // Window > Initial position: the Yetty window moves there when the first session opens
         if cfg.initial_pos_on && self.sessions.is_empty() {
-            ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(cfg.initial_x as f32, cfg.initial_y as f32)));
+            ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(
+                cfg.initial_x as f32,
+                cfg.initial_y as f32,
+            )));
         }
         if cfg.protocol.uses_host() && cfg.port == 0 {
             cfg.port = cfg.protocol.default_port();
         }
         // A saved credential supplies the user name and password.
         if cfg.use_credentials {
-            if let Some(c) = self.settings.credentials.iter().find(|c| c.name == cfg.credentials) {
+            if let Some(c) = self
+                .settings
+                .credentials
+                .iter()
+                .find(|c| c.name == cfg.credentials)
+            {
                 cfg.username = c.user.clone();
                 if !c.pass.is_empty() {
                     cfg.saved_password = c.pass.clone();
@@ -1663,8 +2108,14 @@ impl YettyApp {
         // Logon steps with credentials: \s becomes the user name and \w the password.
         let creds = self.settings.credentials.clone();
         for step in cfg.logon_steps.iter_mut() {
-            if let Some(c) = creds.iter().find(|c| !step.credentials.is_empty() && c.name == step.credentials) {
-                step.send = step.send.replace("\\s", &c.user).replace("\\w", &config::unprotect(&c.pass));
+            if let Some(c) = creds
+                .iter()
+                .find(|c| !step.credentials.is_empty() && c.name == step.credentials)
+            {
+                step.send = step
+                    .send
+                    .replace("\\s", &c.user)
+                    .replace("\\w", &config::unprotect(&c.pass));
             }
         }
         // Auto Hide: the Session Manager slips away as soon as a session is opened from it.
@@ -1686,7 +2137,9 @@ impl YettyApp {
         }
         if cfg.window_on_top && !self.always_on_top {
             self.always_on_top = true;
-            ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(egui::WindowLevel::AlwaysOnTop));
+            ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(
+                egui::WindowLevel::AlwaysOnTop,
+            ));
         }
         // Global Options > Terminal > "Auto reconnect" (every session) and its interval
         cfg.auto_reconnect |= self.settings.global.auto_reconnect;
@@ -1700,7 +2153,11 @@ impl YettyApp {
             s.recording = Some(Vec::new());
             self.rec_target = Some(s.id);
         }
-        let new_pos = match self.open_after.take().and_then(|oid| self.sessions.iter().position(|x| x.id == oid)) {
+        let new_pos = match self
+            .open_after
+            .take()
+            .and_then(|oid| self.sessions.iter().position(|x| x.id == oid))
+        {
             Some(pos) => pos + 1, // an SFTP tab opens right after the session it came from
             None => self.sessions.len(),
         };
@@ -1716,7 +2173,9 @@ impl YettyApp {
         self.settings.recent.retain(|r| r != &name);
         self.settings.recent.insert(0, name);
         // Global Options > General > "Recently used session list"
-        self.settings.recent.truncate(self.settings.global.recent_list_size.clamp(1, 16) as usize);
+        self.settings
+            .recent
+            .truncate(self.settings.global.recent_list_size.clamp(1, 16) as usize);
         self.dirty = true;
     }
 
@@ -1783,7 +2242,12 @@ impl YettyApp {
         if was_active {
             // the next tab of the same group takes over (the previous one when it was the last)
             let members = self.group_members(g);
-            self.active = members.iter().copied().find(|&k| k >= i).or(members.last().copied()).unwrap_or(i.min(self.sessions.len().saturating_sub(1)));
+            self.active = members
+                .iter()
+                .copied()
+                .find(|&k| k >= i)
+                .or(members.last().copied())
+                .unwrap_or(i.min(self.sessions.len().saturating_sub(1)));
         } else {
             self.active = active_id.and_then(|id| self.index_of(id)).unwrap_or(0);
         }
@@ -1791,9 +2255,16 @@ impl YettyApp {
 
     /// Closes the sessions with these ids; `keep` stays (or becomes) the active one.
     fn close_ids(&mut self, gone: &[u64], keep: u64) {
-        let active_id = self.sessions.get(self.active).map(|s| s.id).filter(|id| !gone.contains(id));
+        let active_id = self
+            .sessions
+            .get(self.active)
+            .map(|s| s.id)
+            .filter(|id| !gone.contains(id));
         self.sessions.retain(|s| !gone.contains(&s.id));
-        self.active = active_id.or(Some(keep)).and_then(|id| self.index_of(id)).unwrap_or(0);
+        self.active = active_id
+            .or(Some(keep))
+            .and_then(|id| self.index_of(id))
+            .unwrap_or(0);
     }
 
     fn clone_tab(&mut self, i: usize, ctx: &egui::Context) {
@@ -1866,7 +2337,12 @@ impl YettyApp {
 
     /// "name (copy)", "name (copy 2)"... the first that is not used in the folder.
     fn unique_session_name(&self, folder: &str, base: &str) -> String {
-        let taken = |n: &str| self.settings.sessions.iter().any(|s| s.folder == folder && s.display_name().eq_ignore_ascii_case(n));
+        let taken = |n: &str| {
+            self.settings
+                .sessions
+                .iter()
+                .any(|s| s.folder == folder && s.display_name().eq_ignore_ascii_case(n))
+        };
         let first = format!("{base} (copy)");
         if !taken(&first) {
             return first;
@@ -1879,25 +2355,56 @@ impl YettyApp {
 
     /// `base` when no session of the folder uses it, otherwise "base (1)", "base (2)"...
     fn free_session_name(&self, folder: &str, base: &str) -> String {
-        let taken = |n: &str| self.settings.sessions.iter().any(|s| s.folder == folder && s.display_name().eq_ignore_ascii_case(n));
+        let taken = |n: &str| {
+            self.settings
+                .sessions
+                .iter()
+                .any(|s| s.folder == folder && s.display_name().eq_ignore_ascii_case(n))
+        };
         if !taken(base) {
             return base.to_string();
         }
-        (1..).map(|k| format!("{base} ({k})")).find(|n| !taken(n)).unwrap_or_else(|| base.to_string())
+        (1..)
+            .map(|k| format!("{base} ({k})"))
+            .find(|n| !taken(n))
+            .unwrap_or_else(|| base.to_string())
     }
 
     /// Files and folders dragged from Windows onto an SFTP session are uploaded to the remote folder
     /// it is in (`put`, and `put -r` for folders), as the original does.
     fn handle_file_drops(&mut self, ctx: &egui::Context) {
-        let sftp_active = self.sessions.get(self.active).map(|s| s.cfg.protocol == Protocol::Sftp && s.is_connected()).unwrap_or(false);
+        let sftp_active = self
+            .sessions
+            .get(self.active)
+            .map(|s| s.cfg.protocol == Protocol::Sftp && s.is_connected())
+            .unwrap_or(false);
         let hovering = ctx.input(|i| !i.raw.hovered_files.is_empty());
         if hovering && sftp_active && !self.any_dialog_open() {
             let screen = ctx.content_rect();
-            let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::new("drop_hint")));
-            painter.rect_filled(screen, 0.0, Color32::from_rgba_unmultiplied(0x00, 0x78, 0xd4, 40));
-            painter.text(screen.center(), egui::Align2::CENTER_CENTER, "Drop to upload to the SFTP session", egui::FontId::proportional(18.0), Color32::WHITE);
+            let painter = ctx.layer_painter(egui::LayerId::new(
+                egui::Order::Foreground,
+                egui::Id::new("drop_hint"),
+            ));
+            painter.rect_filled(
+                screen,
+                0.0,
+                Color32::from_rgba_unmultiplied(0x00, 0x78, 0xd4, 40),
+            );
+            painter.text(
+                screen.center(),
+                egui::Align2::CENTER_CENTER,
+                "Drop to upload to the SFTP session",
+                egui::FontId::proportional(18.0),
+                Color32::WHITE,
+            );
         }
-        let dropped: Vec<std::path::PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).collect());
+        let dropped: Vec<std::path::PathBuf> = ctx.input(|i| {
+            i.raw
+                .dropped_files
+                .iter()
+                .map(|f| f.path().to_path_buf())
+                .collect()
+        });
         if dropped.is_empty() {
             return;
         }
@@ -1960,9 +2467,20 @@ impl YettyApp {
         let n = self.sessions.len();
         match self.cmd_target {
             1 => (0..n).collect(),
-            2 if self.layout == Layout::Tabs => self.group_current.iter().filter_map(|id| self.index_of(*id)).collect(),
-            2 => (0..n).filter(|&i| !self.pane_min.contains(&self.sessions[i].id) || self.pane_max == Some(self.sessions[i].id)).collect(),
-            3 => (0..n).filter(|&i| self.group_index(i) == self.cmd_group).collect(),
+            2 if self.layout == Layout::Tabs => self
+                .group_current
+                .iter()
+                .filter_map(|id| self.index_of(*id))
+                .collect(),
+            2 => (0..n)
+                .filter(|&i| {
+                    !self.pane_min.contains(&self.sessions[i].id)
+                        || self.pane_max == Some(self.sessions[i].id)
+                })
+                .collect(),
+            3 => (0..n)
+                .filter(|&i| self.group_index(i) == self.cmd_group)
+                .collect(),
             _ if self.active < n => vec![self.active],
             _ => Vec::new(),
         }
@@ -1975,7 +2493,12 @@ impl YettyApp {
     }
 
     fn prompt(&mut self, kind: Prompt, title: &'static str, label: &'static str, text: String) {
-        self.prompt = Some(PromptDlg { kind, title, label, text });
+        self.prompt = Some(PromptDlg {
+            kind,
+            title,
+            label,
+            text,
+        });
     }
 
     fn open_options(&mut self, target: EditTarget, page: &str) {
@@ -1990,12 +2513,24 @@ impl YettyApp {
                 (c, "Session Options - New Session".to_string())
             }
             EditTarget::Active => match self.sessions.get(self.active) {
-                Some(s) => (s.cfg.clone(), format!("Session Options - {}", s.cfg.display_name())),
+                Some(s) => (
+                    s.cfg.clone(),
+                    format!("Session Options - {}", s.cfg.display_name()),
+                ),
                 None => return,
             },
-            EditTarget::DefaultSession => (self.settings.default_session.clone(), "Default Session".to_string()),
-            EditTarget::DefaultSerial => (self.settings.default_serial.clone(), "Serial Defaults".to_string()),
-            EditTarget::DefaultLocal => (self.settings.default_local.clone(), "Local Shell Defaults".to_string()),
+            EditTarget::DefaultSession => (
+                self.settings.default_session.clone(),
+                "Default Session".to_string(),
+            ),
+            EditTarget::DefaultSerial => (
+                self.settings.default_serial.clone(),
+                "Serial Defaults".to_string(),
+            ),
+            EditTarget::DefaultLocal => (
+                self.settings.default_local.clone(),
+                "Local Shell Defaults".to_string(),
+            ),
         };
         self.options = Some(OptionsDlg::new(target, cfg, title, page));
     }
@@ -2016,7 +2551,12 @@ impl YettyApp {
                     // The edit is also written to the saved session it came from.
                     let (old_name, old_host) = (s.cfg.display_name(), s.cfg.host.clone());
                     let mut cfg = d.cfg;
-                    if let Some(saved) = self.settings.sessions.iter_mut().find(|x| x.display_name() == old_name && x.host == old_host) {
+                    if let Some(saved) = self
+                        .settings
+                        .sessions
+                        .iter_mut()
+                        .find(|x| x.display_name() == old_name && x.host == old_host)
+                    {
                         let (n, f) = (saved.name.clone(), saved.folder.clone());
                         *saved = cfg.clone();
                         saved.name = n;
@@ -2024,7 +2564,11 @@ impl YettyApp {
                     }
                     cfg.name = s.cfg.name.clone();
                     cfg.folder = s.cfg.folder.clone();
-                    s.title = if cfg.tab_title.trim().is_empty() { cfg.display_name() } else { cfg.tab_title.clone() };
+                    s.title = if cfg.tab_title.trim().is_empty() {
+                        cfg.display_name()
+                    } else {
+                        cfg.tab_title.clone()
+                    };
                     s.cfg = cfg;
                 }
             }
@@ -2046,14 +2590,26 @@ impl YettyApp {
         if ctx.input_mut(|i| i.consume_shortcut(&alt_shift(Key::L))) {
             self.local_shell(ctx);
         }
-        if ctx.input_mut(|i| i.consume_shortcut(&alt(Key::Q)) || i.consume_shortcut(&alt(Key::B)) || i.consume_shortcut(&alt(Key::C))) {
+        if ctx.input_mut(|i| {
+            i.consume_shortcut(&alt(Key::Q))
+                || i.consume_shortcut(&alt(Key::B))
+                || i.consume_shortcut(&alt(Key::C))
+        }) {
             self.quick_connect();
         }
         if ctx.input_mut(|i| i.consume_shortcut(&alt(Key::M))) {
-            self.side = if self.side == Some(Side::SessionManager) { None } else { Some(Side::SessionManager) };
+            self.side = if self.side == Some(Side::SessionManager) {
+                None
+            } else {
+                Some(Side::SessionManager)
+            };
         }
         if ctx.input_mut(|i| i.consume_shortcut(&alt(Key::Z))) {
-            self.side = if self.side == Some(Side::ActiveSessions) { None } else { Some(Side::ActiveSessions) };
+            self.side = if self.side == Some(Side::ActiveSessions) {
+                None
+            } else {
+                Some(Side::ActiveSessions)
+            };
         }
         if ctx.input_mut(|i| i.consume_shortcut(&alt(Key::J))) {
             self.settings.show_command_manager = true;
@@ -2112,7 +2668,9 @@ impl YettyApp {
         if ctx.input_mut(|i| i.consume_shortcut(&alt(Key::Enter))) {
             // Alt+Enter: Properties in the Session Manager, Full Screen elsewhere (Alt+Return in the original)
             match self.selected {
-                Some(i) if self.side == Some(Side::SessionManager) && self.sm_hover => self.open_options(EditTarget::Saved(i), "connection"),
+                Some(i) if self.side == Some(Side::SessionManager) && self.sm_hover => {
+                    self.open_options(EditTarget::Saved(i), "connection")
+                }
                 _ => {
                     let full = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
                     ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(!full));
@@ -2127,7 +2685,11 @@ impl YettyApp {
             }
         }
         if ctx.input_mut(|i| i.consume_shortcut(&alt(Key::P))) {
-            if let Some(s) = self.sessions.get(self.active).filter(|s| s.cfg.protocol == Protocol::Ssh) {
+            if let Some(s) = self
+                .sessions
+                .get(self.active)
+                .filter(|s| s.cfg.protocol == Protocol::Ssh)
+            {
                 let mut cfg = s.cfg_for_clone();
                 self.open_after = Some(s.id);
                 cfg.protocol = Protocol::Sftp;
@@ -2135,22 +2697,35 @@ impl YettyApp {
                 self.open_session(cfg, ctx);
             }
         }
-        if ctx.input_mut(|i| i.consume_shortcut(&KeyboardShortcut::new(Modifiers::CTRL | Modifiers::SHIFT, Key::A))) {
+        if ctx.input_mut(|i| {
+            i.consume_shortcut(&KeyboardShortcut::new(
+                Modifiers::CTRL | Modifiers::SHIFT,
+                Key::A,
+            ))
+        }) {
             if let Some(s) = self.sessions.get_mut(self.active) {
                 s.select_all();
             }
         }
-        if ctx.input_mut(|i| i.consume_shortcut(&ctrl_alt(Key::U)) || i.consume_key(Modifiers::NONE, Key::F10)) {
+        if ctx.input_mut(|i| {
+            i.consume_shortcut(&ctrl_alt(Key::U)) || i.consume_key(Modifiers::NONE, Key::F10)
+        }) {
             self.settings.show_menu_bar = !self.settings.show_menu_bar;
         }
         if ctx.input_mut(|i| i.consume_shortcut(&ctrl_alt(Key::T))) {
-            if let Some(cfg) = self.selected.and_then(|i| self.settings.sessions.get(i)).cloned() {
+            if let Some(cfg) = self
+                .selected
+                .and_then(|i| self.settings.sessions.get(i))
+                .cloned()
+            {
                 self.open_session(cfg, ctx);
             }
         }
         // Global Options > Terminal > Advanced: "Disable session zooming with keyboard shortcuts / mouse scrollwheel"
         if !self.settings.global.no_zoom_keys {
-            if ctx.input_mut(|i| i.consume_shortcut(&ctrl(Key::Equals)) || i.consume_shortcut(&ctrl(Key::Plus))) {
+            if ctx.input_mut(|i| {
+                i.consume_shortcut(&ctrl(Key::Equals)) || i.consume_shortcut(&ctrl(Key::Plus))
+            }) {
                 self.zoom = (self.zoom + 0.1).min(3.0);
             }
             if ctx.input_mut(|i| i.consume_shortcut(&ctrl(Key::Minus))) {
@@ -2169,7 +2744,17 @@ impl YettyApp {
         }
         // "ALT+N switches to the Nth tabbed or tiled session"
         if self.settings.global.alt_n_switch {
-            let keys = [Key::Num1, Key::Num2, Key::Num3, Key::Num4, Key::Num5, Key::Num6, Key::Num7, Key::Num8, Key::Num9];
+            let keys = [
+                Key::Num1,
+                Key::Num2,
+                Key::Num3,
+                Key::Num4,
+                Key::Num5,
+                Key::Num6,
+                Key::Num7,
+                Key::Num8,
+                Key::Num9,
+            ];
             for (n, k) in keys.into_iter().enumerate() {
                 if n < self.sessions.len() && ctx.input_mut(|i| i.consume_shortcut(&alt(k))) {
                     self.active = n;
@@ -2243,7 +2828,17 @@ impl YettyApp {
                 }
             }
         }
-        let nums = [Key::Num1, Key::Num2, Key::Num3, Key::Num4, Key::Num5, Key::Num6, Key::Num7, Key::Num8, Key::Num9];
+        let nums = [
+            Key::Num1,
+            Key::Num2,
+            Key::Num3,
+            Key::Num4,
+            Key::Num5,
+            Key::Num6,
+            Key::Num7,
+            Key::Num8,
+            Key::Num9,
+        ];
         for (i, k) in nums.iter().enumerate() {
             if ctx.input_mut(|inp| inp.consume_shortcut(&alt(*k))) && i < self.sessions.len() {
                 self.active = i;
@@ -2263,7 +2858,8 @@ impl YettyApp {
     }
 
     fn start_zmodem_upload(&mut self) {
-        let files: Vec<std::path::PathBuf> = self.zm_list.iter().map(std::path::PathBuf::from).collect();
+        let files: Vec<std::path::PathBuf> =
+            self.zm_list.iter().map(std::path::PathBuf::from).collect();
         match crate::transfer::Transfer::new_zmodem_send(files) {
             Ok(t) => {
                 if let Some(s) = self.sessions.get_mut(self.active) {
@@ -2280,7 +2876,11 @@ impl YettyApp {
     }
 
     fn download_dir(&self) -> std::path::PathBuf {
-        let d = self.sessions.get(self.active).map(|s| s.cfg.download_dir.clone()).unwrap_or_default();
+        let d = self
+            .sessions
+            .get(self.active)
+            .map(|s| s.cfg.download_dir.clone())
+            .unwrap_or_default();
         if d.trim().is_empty() {
             config::data_dir().join("downloads")
         } else {
@@ -2297,7 +2897,10 @@ impl YettyApp {
             for s in &mut self.sessions {
                 s.capture_file = None;
             }
-            let _ = std::process::Command::new("notepad.exe").arg("/p").arg(&path).spawn();
+            let _ = std::process::Command::new("notepad.exe")
+                .arg("/p")
+                .arg(&path)
+                .spawn();
             self.status_msg = "Auto print finished: sent to the default printer".into();
         } else if let Some(s) = self.sessions.get_mut(self.active) {
             match s.start_capture(&path.to_string_lossy()) {
@@ -2311,8 +2914,14 @@ impl YettyApp {
     }
 
     fn print_text(&mut self, selection: bool) {
-        let Some(s) = self.sessions.get_mut(self.active) else { return };
-        let body = if selection { s.selected_text().unwrap_or_default() } else { s.screen_text() };
+        let Some(s) = self.sessions.get_mut(self.active) else {
+            return;
+        };
+        let body = if selection {
+            s.selected_text().unwrap_or_default()
+        } else {
+            s.screen_text()
+        };
         let mut text = String::new();
         if !s.cfg.print_header.is_empty() {
             text.push_str(&s.cfg.print_header);
@@ -2327,7 +2936,10 @@ impl YettyApp {
         let _ = std::fs::create_dir_all(&dir);
         let path = dir.join("print.txt");
         if std::fs::write(&path, text).is_ok() {
-            let _ = std::process::Command::new("notepad.exe").arg("/p").arg(&path).spawn();
+            let _ = std::process::Command::new("notepad.exe")
+                .arg("/p")
+                .arg(&path)
+                .spawn();
             self.status_msg = "Sent to the default printer".into();
         }
     }
@@ -2337,8 +2949,18 @@ impl YettyApp {
         match std::fs::read_to_string(&path) {
             Ok(text) => {
                 let lines: Vec<String> = text.lines().map(|l| l.trim().to_string()).collect();
-                let name = std::path::Path::new(&path).file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or(path.clone());
-                self.scripts.push(ScriptRun { sid, name, lines, pc: 0, sleep_until: None, waiting: None });
+                let name = std::path::Path::new(&path)
+                    .file_name()
+                    .map(|f| f.to_string_lossy().into_owned())
+                    .unwrap_or(path.clone());
+                self.scripts.push(ScriptRun {
+                    sid,
+                    name,
+                    lines,
+                    pc: 0,
+                    sleep_until: None,
+                    waiting: None,
+                });
                 self.settings.recent_scripts.retain(|r| r != &path);
                 self.settings.recent_scripts.insert(0, path);
                 self.settings.recent_scripts.truncate(6);
@@ -2359,7 +2981,11 @@ impl YettyApp {
         let active_id = self.sessions.get(self.active).map(|s| s.id);
         for (n, run) in self.scripts.iter_mut().enumerate() {
             // A script started without a session works on the active session once there is one.
-            let target = if run.sid == 0 { active_id } else { Some(run.sid) };
+            let target = if run.sid == 0 {
+                active_id
+            } else {
+                Some(run.sid)
+            };
             let mut sess = target.and_then(|id| self.sessions.iter_mut().find(|s| s.id == id));
             if sess.is_none() && run.sid != 0 {
                 finished.push(n);
@@ -2372,7 +2998,10 @@ impl YettyApp {
                 run.sleep_until = None;
             }
             if let Some((text, started)) = &run.waiting {
-                let found = sess.as_ref().map(|s| s.recent.contains(text.as_str())).unwrap_or(false);
+                let found = sess
+                    .as_ref()
+                    .map(|s| s.recent.contains(text.as_str()))
+                    .unwrap_or(false);
                 if found || started.elapsed() > Duration::from_secs(120) {
                     run.waiting = None;
                     run.pc += 1;
@@ -2398,7 +3027,8 @@ impl YettyApp {
                     }
                     "sleep" => {
                         let secs: f32 = arg.parse().unwrap_or(1.0);
-                        run.sleep_until = Some(Instant::now() + Duration::from_millis((secs * 1000.0) as u64));
+                        run.sleep_until =
+                            Some(Instant::now() + Duration::from_millis((secs * 1000.0) as u64));
                         run.pc += 1;
                         break;
                     }
@@ -2464,8 +3094,22 @@ impl YettyApp {
         let alt_open: Option<usize> = if cur.map(|s| s.cfg.meta_key).unwrap_or(false) {
             None
         } else {
-            const BAR_KEYS: [egui::Key; 9] = [egui::Key::F, egui::Key::E, egui::Key::V, egui::Key::O, egui::Key::T, egui::Key::S, egui::Key::L, egui::Key::W, egui::Key::H];
-            ctx.input_mut(|i| BAR_KEYS.iter().position(|k| i.consume_key(egui::Modifiers::ALT, *k)))
+            const BAR_KEYS: [egui::Key; 9] = [
+                egui::Key::F,
+                egui::Key::E,
+                egui::Key::V,
+                egui::Key::O,
+                egui::Key::T,
+                egui::Key::S,
+                egui::Key::L,
+                egui::Key::W,
+                egui::Key::H,
+            ];
+            ctx.input_mut(|i| {
+                BAR_KEYS
+                    .iter()
+                    .position(|k| i.consume_key(egui::Modifiers::ALT, *k))
+            })
         };
         // the underlined letters show after Alt was pressed (while it is down, or while the menu it opened is open),
         // not for a menu opened with the pointer
@@ -2480,612 +3124,848 @@ impl YettyApp {
         let bar_ul = vis;
         egui::MenuBar::new().ui(ui, |ui| {
             ui.spacing_mut().button_padding = egui::vec2(6.0, 1.0);
-            menus.push(ui.menu_button(bar_title(&ctx, "File", bar_ul), |ui| {
-                ui.set_min_width(260.0);
-                if mi(ui, "Connect...", "Alt+C", true) {
-                    self.quick_connect();
-                }
-                if mi(ui, "Quick Connect...", "Alt+Q", true) {
-                    self.quick_connect();
-                }
-                if mi(ui, "Connect In Tab/Tile...", "Alt+B", true) {
-                    self.quick_connect();
-                }
-                if mi(ui, "Connect Local Shell", "Alt+Shift+L", true) {
-                    self.local_shell(&ctx);
-                }
-                ui.separator();
-                sub_menu(ui, "Open Snapshot", |ui| {
-                    if self.settings.snapshots.is_empty() {
-                        ui.add_enabled(false, egui::Button::new("(none)"));
+            menus.push(
+                ui.menu_button(bar_title(&ctx, "File", bar_ul), |ui| {
+                    ui.set_min_width(260.0);
+                    if mi(ui, "Connect...", "Alt+C", true) {
+                        self.quick_connect();
                     }
-                    let names: Vec<String> = self.settings.snapshots.iter().map(|s| s.0.clone()).collect();
-                    for (i, n) in names.iter().enumerate() {
-                        if ui.button(n).clicked() {
-                            let cfgs = self.settings.snapshots[i].1.clone();
-                            for c in cfgs {
-                                self.open_session(c, &ctx);
-                            }
-                            self.last_snapshot = Some(n.clone());
+                    if mi(ui, "Quick Connect...", "Alt+Q", true) {
+                        self.quick_connect();
+                    }
+                    if mi(ui, "Connect In Tab/Tile...", "Alt+B", true) {
+                        self.quick_connect();
+                    }
+                    if mi(ui, "Connect Local Shell", "Alt+Shift+L", true) {
+                        self.local_shell(&ctx);
+                    }
+                    ui.separator();
+                    sub_menu(ui, "Open Snapshot", |ui| {
+                        if self.settings.snapshots.is_empty() {
+                            ui.add_enabled(false, egui::Button::new("(none)"));
                         }
-                    }
-                });
-                sub_menu(ui, "Save Snapshot", |ui| {
-                    if mi(ui, "Update", "", self.last_snapshot.is_some() && has) {
-                        if let Some(n) = self.last_snapshot.clone() {
-                            let cfgs: Vec<SessionConfig> = self.sessions.iter().map(|s| s.cfg.clone()).collect();
-                            if let Some(e) = self.settings.snapshots.iter_mut().find(|e| e.0 == n) {
-                                e.1 = cfgs;
+                        let names: Vec<String> = self
+                            .settings
+                            .snapshots
+                            .iter()
+                            .map(|s| s.0.clone())
+                            .collect();
+                        for (i, n) in names.iter().enumerate() {
+                            if ui.button(n).clicked() {
+                                let cfgs = self.settings.snapshots[i].1.clone();
+                                for c in cfgs {
+                                    self.open_session(c, &ctx);
+                                }
+                                self.last_snapshot = Some(n.clone());
                             }
-                            self.dirty = true;
                         }
+                    });
+                    sub_menu(ui, "Save Snapshot", |ui| {
+                        if mi(ui, "Update", "", self.last_snapshot.is_some() && has) {
+                            if let Some(n) = self.last_snapshot.clone() {
+                                let cfgs: Vec<SessionConfig> =
+                                    self.sessions.iter().map(|s| s.cfg.clone()).collect();
+                                if let Some(e) =
+                                    self.settings.snapshots.iter_mut().find(|e| e.0 == n)
+                                {
+                                    e.1 = cfgs;
+                                }
+                                self.dirty = true;
+                            }
+                        }
+                        if mi(ui, "Save As...", "", has) {
+                            self.prompt(
+                                Prompt::SnapshotName,
+                                "Save Snapshot",
+                                "Snapshot name:",
+                                String::new(),
+                            );
+                        }
+                    });
+                    if mi(ui, "Manage Snapshot...", "", true) {
+                        self.snapshots_open = true;
                     }
-                    if mi(ui, "Save As...", "", has) {
-                        self.prompt(Prompt::SnapshotName, "Save Snapshot", "Snapshot name:", String::new());
-                    }
-                });
-                if mi(ui, "Manage Snapshot...", "", true) {
-                    self.snapshots_open = true;
-                }
-                ui.separator();
-                if mi(ui, "Reconnect", "", has && !connected) {
-                    if let Some(s) = self.sessions.get_mut(self.active) {
-                        s.connect();
-                    }
-                }
-                if mi(ui, "Reconnect All", "Alt+A", any_down) {
-                    for s in &mut self.sessions {
-                        if !s.is_connected() {
+                    ui.separator();
+                    if mi(ui, "Reconnect", "", has && !connected) {
+                        if let Some(s) = self.sessions.get_mut(self.active) {
                             s.connect();
                         }
                     }
-                }
-                if mi(ui, "Disconnect", "", connected) {
-                    self.request_disconnect(self.active);
-                }
-                if mi(ui, "Disconnect All", "", self.sessions.iter().any(|s| s.is_connected())) {
-                    self.ask("Are you sure you want to disconnect all sessions?", ConfirmAct::DisconnectAll);
-                }
-                ui.separator();
-                if mi(ui, "Clone Session", "", has) {
-                    self.clone_tab(self.active, &ctx);
-                }
-                if mi(ui, "Connect SFTP Session", "Alt+P", is_ssh) {
-                    if let Some(s) = self.sessions.get(self.active) {
-                        let mut cfg = s.cfg_for_clone();
-                        self.open_after = Some(s.id);
-                        cfg.protocol = Protocol::Sftp;
-                        cfg.name = format!("SFTP-{}", cfg.host.trim());
-                        self.open_session(cfg, &ctx);
-                    }
-                }
-                ui.separator();
-                if mi(ui, if locked { "Unlock Session" } else { "Lock Session..." }, "", has) {
-                    if locked {
-                        if let Some(s) = self.sessions.get_mut(self.active) {
-                            s.locked = None;
-                        }
-                    } else {
-                        self.prompt(Prompt::LockPassword, "Lock Session", "Password to unlock:", String::new());
-                    }
-                }
-                ui.separator();
-                sub_menu(ui, "Print", |ui| {
-                    let auto = self.auto_print_on;
-                    if mi(ui, if auto { "✔ Auto Print" } else { "Auto Print" }, "", has) {
-                        self.toggle_auto_print();
-                    }
-                    if mi(ui, "Screen", "", has) {
-                        self.print_text(false);
-                    }
-                    if mi(ui, "Selection", "", has) {
-                        self.print_text(true);
-                    }
-                    mi(ui, "Eject page", "", false);
-                    mi(ui, "Cancel", "", false);
-                });
-                if mi(ui, "Page Setup...", "", has) {
-                    self.open_options(EditTarget::Active, "printing");
-                }
-                ui.separator();
-                // These three can be turned on before any session exists: they apply to the next one.
-                let mut log_on = if has { logging } else { self.pending_log };
-                if ui.checkbox(&mut log_on, "Log Session").clicked() {
-                    if has {
-                        if let Some(s) = self.sessions.get_mut(self.active) {
-                            if s.is_logging() {
-                                s.stop_log();
-                                self.status_msg = "Logging stopped".into();
-                            } else {
-                                let p = s.default_log_path();
-                                self.prompt(Prompt::LogFile, "Log Session", "Log file:", p);
+                    if mi(ui, "Reconnect All", "Alt+A", any_down) {
+                        for s in &mut self.sessions {
+                            if !s.is_connected() {
+                                s.connect();
                             }
                         }
-                    } else {
-                        self.pending_log = log_on;
                     }
-                }
-                if mi(ui, if paused { "Resume Logging" } else { "Pause Logging" }, "", logging) {
-                    if let Some(s) = self.sessions.get_mut(self.active) {
-                        s.log_paused = !s.log_paused;
+                    if mi(ui, "Disconnect", "", connected) {
+                        self.request_disconnect(self.active);
                     }
-                }
-                let mut raw_on = if has { raw_logging } else { self.pending_raw };
-                if ui.checkbox(&mut raw_on, "Raw Log Session").clicked() {
-                    if has {
-                        if let Some(s) = self.sessions.get_mut(self.active) {
-                            if s.is_logging() && s.log_raw {
-                                s.stop_log();
-                            } else {
-                                if s.is_logging() {
-                                    s.stop_log();
-                                }
-                                let p = s.default_log_path().replace(".log", ".raw.log");
-                                s.log_raw = true;
-                                self.status_msg = match s.start_log(Some(p)) {
-                                    Ok(p) => format!("Raw logging to {p}"),
-                                    Err(e) => e,
-                                };
-                            }
-                        }
-                    } else {
-                        self.pending_raw = raw_on;
-                    }
-                }
-                let mut trace_on = tracing;
-                if ui.checkbox(&mut trace_on, "Trace Options").clicked() {
-                    if let Some(s) = self.sessions.get_mut(self.active) {
-                        s.cfg.ssh_verbose = trace_on;
-                        self.status_msg = "SSH debug messages apply the next time this tab connects".into();
-                    } else {
-                        self.pending_trace = trace_on;
-                    }
-                }
-                ui.separator();
-                if self.settings.recent.is_empty() {
-                    mi(ui, "Recent Session", "", false);
-                } else {
-                    sub_menu(ui, "Recent Session", |ui| {
-                        let recent = self.settings.recent.clone();
-                        for r in recent {
-                            if ui.button(&r).clicked() {
-                                if let Some(cfg) = self.settings.sessions.iter().find(|s| s.display_name() == r).cloned() {
-                                    self.open_session(cfg, &ctx);
-                                }
-                            }
-                        }
-                    });
-                }
-                ui.separator();
-                if mi(ui, "Open Scratchpad", "", true) {
-                    if self.scratch.is_none() {
-                        self.scratch = Some(String::new());
-                    }
-                }
-                if mi(ui, "Open File...", "", true) {
-                    ui.close();
-                    if let Some(p) = config::browse_file("Open File", None) {
-                        match std::fs::read_to_string(&p) {
-                            Ok(t) => self.scratch = Some(t),
-                            Err(e) => self.error_msg = Some(format!("Could not read the file:\n{e}")),
-                        }
-                    }
-                }
-                ui.separator();
-                if mi(ui, "Exit", "", true) {
-                    self.request_exit(&ctx);
-                }
-            }).response);
-            menus.push(ui.menu_button(bar_title(&ctx, "Edit", bar_ul), |ui| {
-                ui.set_min_width(300.0);
-                if mi(ui, "Copy", "Ctrl+Ins", true) {
-                    self.copy_selection(&ctx);
-                }
-                if mi(ui, "Paste", "Shift+Ins", true) {
-                    ctx.send_viewport_cmd(egui::ViewportCommand::RequestPaste);
-                    self.focus_terminal = true;
-                }
-                if mi(ui, "Copy and Paste", "", has_sel) {
-                    if let Some(s) = self.sessions.get_mut(self.active) {
-                        if let Some(t) = s.selected_text() {
-                            s.send_str(&t);
-                        }
-                    }
-                }
-                if mi(ui, "Paste as Quotation", "", has) {
-                    if let Some(s) = self.sessions.get_mut(self.active) {
-                        s.paste_quote = true;
-                    }
-                    ctx.send_viewport_cmd(egui::ViewportCommand::RequestPaste);
-                    self.focus_terminal = true;
-                }
-                if mi(ui, "Select All", "Ctrl+Shift+A", has) {
-                    if let Some(s) = self.sessions.get_mut(self.active) {
-                        s.select_all();
-                    }
-                }
-                if mi(ui, "Find...", "", has) {
-                    self.find.open = true;
-                }
-                ui.separator();
-                if mi(ui, "Print Selection", "", true) {
-                    self.print_text(true);
-                }
-                ui.separator();
-                if mi(ui, "Go to Command Window", "Alt+G", true) {
-                    self.settings.show_command_window = true;
-                    ctx.memory_mut(|m| m.request_focus(egui::Id::new("command_line")));
-                }
-                if mi(ui, "Go to Session Manager", "Alt+M", true) {
-                    self.side = Some(Side::SessionManager);
-                }
-                if mi(ui, "Go to Command Manager", "Alt+J", true) {
-                    self.settings.show_command_manager = true;
-                    self.side = Some(Side::CommandManager);
-                }
-                if mi(ui, "Go to Active Sessions", "Alt+Z", true) {
-                    self.side = Some(Side::ActiveSessions);
-                }
-                ui.separator();
-                if mi(ui, "Clear Scrollback", "", has) {
-                    if let Some(s) = self.sessions.get_mut(self.active) {
-                        s.clear_scrollback();
-                    }
-                }
-                if mi(ui, "Clear Screen", "", has) {
-                    if let Some(s) = self.sessions.get_mut(self.active) {
-                        s.clear_screen();
-                    }
-                }
-                if mi(ui, "Clear Screen and Scrollback", "", has) {
-                    if let Some(s) = self.sessions.get_mut(self.active) {
-                        s.clear_all();
-                    }
-                }
-                ui.separator();
-                if mi(ui, "Send Break", "", connected) {
-                    if let Some(s) = self.sessions.get_mut(self.active) {
-                        s.send_break();
-                    }
-                }
-                if mi(ui, "Reset", "", true) {
-                    if let Some(s) = self.sessions.get_mut(self.active) {
-                        s.reset();
-                    }
-                }
-            }).response);
-            menus.push(ui.menu_button(bar_title(&ctx, "View", bar_ul), |ui| {
-                ui.set_min_width(250.0);
-                let st = &mut self.settings;
-                mcheck(ui, &mut st.show_menu_bar, "Menu Bar", true);
-                mcheck(ui, &mut st.show_toolbar, "Toolbar", true);
-                mcheck(ui, &mut st.show_command_window, "Command Window", true);
-                mcheck(ui, &mut st.show_connect_bar, "Connect Bar", true);
-                mcheck(ui, &mut st.show_status_bar, "Status Bar", true);
-                mcheck(ui, &mut st.show_button_bar, "Button Bar", true);
-                mcheck(ui, &mut st.show_tabs, "Session Tabs", true);
-                mcheck(ui, &mut st.show_tab_sm, "Session Manager", true);
-                mcheck(ui, &mut st.show_command_manager, "Command Manager", true);
-                mcheck(ui, &mut st.show_tab_as, "Active Sessions", true);
-                ui.separator();
-                mcheck(ui, &mut st.show_hex_view, "Hex View", true);
-                ui.separator();
-                sub_menu(ui, "Themes", |ui| {
-                    for key in ["System", "Native", "Carbon", "VS Blue", "VS Dark", "VS White", "Office White"] {
-                        if mradio(ui, self.settings.theme == key, key) {
-                            self.settings.theme = key.to_string();
-                            apply_theme(&ctx, key);
-                            self.dirty = true;
-                        }
-                    }
-                });
-                sub_menu(ui, "Zoom", |ui| {
-                    if mi(ui, "Zoom in", "Ctrl+=", true) {
-                        self.zoom = (self.zoom + 0.1).min(3.0);
-                    }
-                    if mi(ui, "Zoom out", "Ctrl+-", true) {
-                        self.zoom = (self.zoom - 0.1).max(0.5);
+                    if mi(
+                        ui,
+                        "Disconnect All",
+                        "",
+                        self.sessions.iter().any(|s| s.is_connected()),
+                    ) {
+                        self.ask(
+                            "Are you sure you want to disconnect all sessions?",
+                            ConfirmAct::DisconnectAll,
+                        );
                     }
                     ui.separator();
-                    if mi(ui, "100%", "Ctrl+0", true) {
-                        self.zoom = 1.0;
+                    if mi(ui, "Clone Session", "", has) {
+                        self.clone_tab(self.active, &ctx);
                     }
-                });
-                ui.separator();
-                let mut tr = self.transparent;
-                if mcheck(ui, &mut tr, "Window Transparency", true) {
-                    self.transparent = tr;
-                    config::set_window_opacity(if tr { 200 } else { 255 });
-                }
-                ui.separator();
-                let mut hs = hs_on;
-                if mcheck(ui, &mut hs, "Horizontal Scroll Bar", has) {
-                    if let Some(s) = self.sessions.get_mut(self.active) {
-                        s.cfg.show_hscrollbar = hs;
-                    }
-                }
-                let mut vs = vs_on;
-                if mcheck(ui, &mut vs, "Vertical Scroll Bar", has) {
-                    if let Some(s) = self.sessions.get_mut(self.active) {
-                        s.cfg.show_scrollbar = vs;
-                    }
-                }
-                ui.separator();
-                let mut top = self.always_on_top;
-                if mcheck(ui, &mut top, "Always on Top", true) {
-                    self.always_on_top = top;
-                    ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(if top { egui::WindowLevel::AlwaysOnTop } else { egui::WindowLevel::Normal }));
-                }
-                let full = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
-                if mi(ui, if full { "✓ Full Screen" } else { "Full Screen" }, "Alt+Enter", true) {
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(!full));
-                }
-            }).response);
-            menus.push(ui.menu_button(bar_title(&ctx, "Options", bar_ul), |ui| {
-                ui.set_min_width(260.0);
-                if mi(ui, "Session Options...", "", has) {
-                    self.open_options(EditTarget::Active, "connection");
-                }
-                sub_menu(ui, "Configure", |ui| {
-                    if mi(ui, "Default Session...", "", true) {
-                        self.open_options(EditTarget::DefaultSession, "connection");
-                    }
-                    if mi(ui, "Local Shell Defaults...", "", true) {
-                        self.open_options(EditTarget::DefaultLocal, "connection");
-                    }
-                    if mi(ui, "Serial Defaults...", "", true) {
-                        self.open_options(EditTarget::DefaultSerial, "connection");
-                    }
-                    mi(ui, "RDP Defaults...", "", false);
-                });
-                if mi(ui, "Global Options...", "", true) {
-                    self.global_open = true;
-                }
-                ui.separator();
-                let mut kh = self.settings.keyword_highlighting;
-                if mcheck(ui, &mut kh, "Keyword Highlighting", has) {
-                    self.settings.keyword_highlighting = kh;
-                    self.dirty = true;
-                }
-                if mi(ui, "Keyword Highlighting Properties...", "", has) {
-                    self.open_options(EditTarget::Active, "keywords");
-                }
-                mcheck(ui, &mut self.settings.use_firewall, "Use Firewall", true);
-                ui.separator();
-                mcheck(ui, &mut self.settings.auto_save, "Auto Save Options", true);
-                if mi(ui, "Save Settings Now", "", true) {
-                    self.settings.save();
-                    self.status_msg = "Settings saved".into();
-                }
-            }).response);
-            menus.push(ui.menu_button(bar_title(&ctx, "Transfer", bar_ul), |ui| {
-                ui.set_min_width(240.0);
-                if mi(ui, "Send ASCII...", "", has) {
-                    self.prompt(Prompt::SendAscii, "Send ASCII", "Text file to send:", String::new());
-                }
-                if mi(ui, if capturing { "✓ Receive ASCII..." } else { "Receive ASCII..." }, "", has) {
-                    if capturing {
-                        if let Some(s) = self.sessions.get_mut(self.active) {
-                            s.capture_file = None;
-                        }
-                        self.status_msg = "Stopped receiving".into();
-                    } else {
-                        let base = self.download_dir().to_string_lossy().into_owned();
-                        self.prompt(Prompt::ReceiveAscii, "Receive ASCII", "Save received text to:", format!("{base}\\received.txt"));
-                    }
-                }
-                ui.separator();
-                if mi(ui, "Send Binary...", "", has) {
-                    self.prompt(Prompt::SendBinary, "Send Binary", "File to send:", String::new());
-                }
-                ui.separator();
-                if mi(ui, "Send Kermit...", "", has) {
-                    self.prompt(Prompt::XferSend(Proto::Kermit), "Send Kermit", "File to send:", String::new());
-                }
-                if mi(ui, "Receive Kermit...", "", has) {
-                    let p = self.download_dir().to_string_lossy().into_owned();
-                    self.prompt(Prompt::XferRecv(Proto::Kermit), "Receive Kermit", "Save received files in this folder:", p);
-                }
-                ui.separator();
-                if mi(ui, "Send Xmodem...", "", has) {
-                    self.prompt(Prompt::XferSend(if x1k { Proto::Xmodem1k } else { Proto::Xmodem }), "Send Xmodem", "File to send:", String::new());
-                }
-                if mi(ui, "Receive Xmodem...", "", has) {
-                    let p = self.download_dir().join("xmodem.bin").to_string_lossy().into_owned();
-                    self.prompt(Prompt::XferRecv(Proto::Xmodem), "Receive Xmodem", "Save the received file as:", p);
-                }
-                ui.separator();
-                if mi(ui, "Send Ymodem...", "", has) {
-                    self.prompt(Prompt::XferSend(Proto::Ymodem), "Send Ymodem", "File to send:", String::new());
-                }
-                if mi(ui, "Receive Ymodem...", "", has) {
-                    let p = self.download_dir().to_string_lossy().into_owned();
-                    self.prompt(Prompt::XferRecv(Proto::Ymodem), "Receive Ymodem", "Save received files in this folder:", p);
-                }
-                ui.separator();
-                if mi(ui, "Zmodem Upload List...", "", true) {
-                    self.zm_open = true;
-                }
-                if mi(ui, "Start Zmodem Upload", "", has && !self.zm_list.is_empty()) {
-                    self.start_zmodem_upload();
-                }
-                ui.separator();
-                // The TFTP server does not need a session: it can be started at any time.
-                if mi(ui, if tftp_on { "Stop TFTP Server" } else { "Start TFTP Server" }, "", true) {
-                    if tftp_on {
-                        self.tftp = None;
-                        self.status_msg = "TFTP server stopped".into();
-                    } else {
-                        let p = config::data_dir().join("tftp").to_string_lossy().into_owned();
-                        self.prompt(Prompt::TftpFolder, "Start TFTP Server", "Folder to serve (files are sent from and saved to it):", p);
-                    }
-                }
-                if tftp_on && mi(ui, "TFTP Server Activity...", "", true) {
-                    self.tftp_open = true;
-                }
-            }).response);
-            menus.push(ui.menu_button(bar_title(&ctx, "Script", bar_ul), |ui| {
-                ui.set_min_width(240.0);
-                if mi(ui, "Run...", "", true) {
-                    // The original opens the Windows file dialog straight away.
-                    ui.close();
-                    if let Some(p) = crate::nativedlg::open_script("Select Script to Run") {
+                    if mi(ui, "Connect SFTP Session", "Alt+P", is_ssh) {
                         if let Some(s) = self.sessions.get(self.active) {
-                            let id = s.id;
-                            self.start_script(id, &p);
+                            let mut cfg = s.cfg_for_clone();
+                            self.open_after = Some(s.id);
+                            cfg.protocol = Protocol::Sftp;
+                            cfg.name = format!("SFTP-{}", cfg.host.trim());
+                            self.open_session(cfg, &ctx);
+                        }
+                    }
+                    ui.separator();
+                    if mi(
+                        ui,
+                        if locked {
+                            "Unlock Session"
                         } else {
-                            self.start_script(0, &p);
-                        }
-                    }
-                }
-                if mi(ui, "Edit...", "", true) {
-                    ui.close();
-                    if let Some(p) = crate::nativedlg::open_script("Select Script to Edit") {
-                        let _ = std::process::Command::new("notepad.exe").arg(&p).spawn();
-                    }
-                }
-                if mi(ui, "Cancel", "", !self.scripts.is_empty()) {
-                    self.scripts.clear();
-                    self.status_msg = "Script cancelled".into();
-                }
-                ui.separator();
-                if mi(ui, "Start Recording Script", "", !recording && !self.rec_wait) {
-                    if let Some(s) = self.sessions.get_mut(self.active) {
-                        s.recording = Some(Vec::new());
-                        self.rec_target = Some(s.id);
-                        self.status_msg = "Recording script".into();
-                    } else {
-                        self.rec_wait = true;
-                        self.status_msg = "Recording starts when a session is opened".into();
-                    }
-                }
-                if mi(ui, "Stop Recording Script...", "", recording) {
-                    let p = config::data_dir().join("scripts").join("recorded.txt").to_string_lossy().into_owned();
-                    self.prompt(Prompt::SaveScript, "Save Recorded Script", "Save script to:", p);
-                }
-                if mi(ui, "Cancel Recording Script", "", recording || self.rec_wait) {
-                    self.rec_wait = false;
-                    if let Some(s) = self.sessions.get_mut(self.active) {
-                        s.recording = None;
-                    }
-                }
-                ui.separator();
-                if self.settings.recent_scripts.is_empty() {
-                    mi(ui, "Recent Script", "", false);
-                } else {
-                    sub_menu(ui, "Recent Script", |ui| {
-                        let list = self.settings.recent_scripts.clone();
-                        for p in list {
-                            if ui.button(&p).clicked() {
-                                let id = self.sessions.get(self.active).map(|s| s.id).unwrap_or(0);
-                                self.start_script(id, &p);
+                            "Lock Session..."
+                        },
+                        "",
+                        has,
+                    ) {
+                        if locked {
+                            if let Some(s) = self.sessions.get_mut(self.active) {
+                                s.locked = None;
                             }
+                        } else {
+                            self.prompt(
+                                Prompt::LockPassword,
+                                "Lock Session",
+                                "Password to unlock:",
+                                String::new(),
+                            );
                         }
+                    }
+                    ui.separator();
+                    sub_menu(ui, "Print", |ui| {
+                        let auto = self.auto_print_on;
+                        if mi(
+                            ui,
+                            if auto { "✔ Auto Print" } else { "Auto Print" },
+                            "",
+                            has,
+                        ) {
+                            self.toggle_auto_print();
+                        }
+                        if mi(ui, "Screen", "", has) {
+                            self.print_text(false);
+                        }
+                        if mi(ui, "Selection", "", has) {
+                            self.print_text(true);
+                        }
+                        mi(ui, "Eject page", "", false);
+                        mi(ui, "Cancel", "", false);
                     });
-                }
-            }).response);
-            menus.push(ui.menu_button(bar_title(&ctx, "Tools", bar_ul), |ui| {
-                ui.set_min_width(320.0);
-                if mi(ui, "Keymap Editor...", "", true) {
-                    self.keymap_open = true;
-                }
-                if mi(ui, "Create Public Key...", "", true) {
-                    self.tool_create_public_key(&ctx);
-                }
-                if mi(ui, "Convert Private Key to OpenSSH Format...", "", true) {
-                    self.prompt(Prompt::ConvertKey, "Convert Private Key", "Private key file:", crate::config::ssh_dir());
-                }
-                if mi(ui, "Export Public Key from Certificate...", "", true) {
-                    ui.close();
-                    if let Some(p) = config::browse_file("Select the certificate (PEM, DER, PFX or P12)", None) {
-                        match crate::certkey::public_key_from_certificate(&p) {
-                            Ok(line) => {
-                                if let Some(dest) = config::browse_save("Export Public Key") {
-                                    self.status_msg = match std::fs::write(&dest, format!("{line}\n")) {
-                                        Ok(()) => format!("Public key exported to {dest}"),
-                                        Err(e) => format!("Could not write {dest}: {e}"),
+                    if mi(ui, "Page Setup...", "", has) {
+                        self.open_options(EditTarget::Active, "printing");
+                    }
+                    ui.separator();
+                    // These three can be turned on before any session exists: they apply to the next one.
+                    let mut log_on = if has { logging } else { self.pending_log };
+                    if ui.checkbox(&mut log_on, "Log Session").clicked() {
+                        if has {
+                            if let Some(s) = self.sessions.get_mut(self.active) {
+                                if s.is_logging() {
+                                    s.stop_log();
+                                    self.status_msg = "Logging stopped".into();
+                                } else {
+                                    let p = s.default_log_path();
+                                    self.prompt(Prompt::LogFile, "Log Session", "Log file:", p);
+                                }
+                            }
+                        } else {
+                            self.pending_log = log_on;
+                        }
+                    }
+                    if mi(
+                        ui,
+                        if paused {
+                            "Resume Logging"
+                        } else {
+                            "Pause Logging"
+                        },
+                        "",
+                        logging,
+                    ) {
+                        if let Some(s) = self.sessions.get_mut(self.active) {
+                            s.log_paused = !s.log_paused;
+                        }
+                    }
+                    let mut raw_on = if has { raw_logging } else { self.pending_raw };
+                    if ui.checkbox(&mut raw_on, "Raw Log Session").clicked() {
+                        if has {
+                            if let Some(s) = self.sessions.get_mut(self.active) {
+                                if s.is_logging() && s.log_raw {
+                                    s.stop_log();
+                                } else {
+                                    if s.is_logging() {
+                                        s.stop_log();
+                                    }
+                                    let p = s.default_log_path().replace(".log", ".raw.log");
+                                    s.log_raw = true;
+                                    self.status_msg = match s.start_log(Some(p)) {
+                                        Ok(p) => format!("Raw logging to {p}"),
+                                        Err(e) => e,
                                     };
                                 }
                             }
-                            Err(e) => self.error_msg = Some(e),
+                        } else {
+                            self.pending_raw = raw_on;
                         }
                     }
-                }
-                if mi(ui, "Public-Key Assistant...", "", has) {
-                    self.keyassist_open = true;
-                }
-                ui.separator();
-                if mi(ui, "Manage Agent Keys...", "", true) {
-                    self.tool_manage_agent_keys(&ctx);
-                }
-                if mi(ui, "Manage Saved Credentials...", "", true) {
-                    self.creds_open = true;
-                }
-                if self.settings.credentials.is_empty() {
-                    mi(ui, "Change Credentials Password", "", false);
-                } else {
-                    sub_menu(ui, "Change Credentials Password", |ui| {
-                        let names: Vec<String> = self.settings.credentials.iter().map(|c| c.name.clone()).collect();
-                        for (i, n) in names.iter().enumerate() {
-                            if ui.button(n).clicked() {
-                                self.prompt(Prompt::CredPassword(i), "Change Credentials Password", "New password:", String::new());
+                    let mut trace_on = tracing;
+                    if ui.checkbox(&mut trace_on, "Trace Options").clicked() {
+                        if let Some(s) = self.sessions.get_mut(self.active) {
+                            s.cfg.ssh_verbose = trace_on;
+                            self.status_msg =
+                                "SSH debug messages apply the next time this tab connects".into();
+                        } else {
+                            self.pending_trace = trace_on;
+                        }
+                    }
+                    ui.separator();
+                    if self.settings.recent.is_empty() {
+                        mi(ui, "Recent Session", "", false);
+                    } else {
+                        sub_menu(ui, "Recent Session", |ui| {
+                            let recent = self.settings.recent.clone();
+                            for r in recent {
+                                if ui.button(&r).clicked() {
+                                    if let Some(cfg) = self
+                                        .settings
+                                        .sessions
+                                        .iter()
+                                        .find(|s| s.display_name() == r)
+                                        .cloned()
+                                    {
+                                        self.open_session(cfg, &ctx);
+                                    }
+                                }
+                            }
+                        });
+                    }
+                    ui.separator();
+                    if mi(ui, "Open Scratchpad", "", true) && self.scratch.is_none() {
+                        self.scratch = Some(String::new());
+                    }
+                    if mi(ui, "Open File...", "", true) {
+                        ui.close();
+                        if let Some(p) = config::browse_file("Open File", None) {
+                            match std::fs::read_to_string(&p) {
+                                Ok(t) => self.scratch = Some(t),
+                                Err(e) => {
+                                    self.error_msg = Some(format!("Could not read the file:\n{e}"))
+                                }
+                            }
+                        }
+                    }
+                    ui.separator();
+                    if mi(ui, "Exit", "", true) {
+                        self.request_exit(&ctx);
+                    }
+                })
+                .response,
+            );
+            menus.push(
+                ui.menu_button(bar_title(&ctx, "Edit", bar_ul), |ui| {
+                    ui.set_min_width(300.0);
+                    if mi(ui, "Copy", "Ctrl+Ins", true) {
+                        self.copy_selection(&ctx);
+                    }
+                    if mi(ui, "Paste", "Shift+Ins", true) {
+                        ctx.send_viewport_cmd(egui::ViewportCommand::RequestPaste);
+                        self.focus_terminal = true;
+                    }
+                    if mi(ui, "Copy and Paste", "", has_sel) {
+                        if let Some(s) = self.sessions.get_mut(self.active) {
+                            if let Some(t) = s.selected_text() {
+                                s.send_str(&t);
+                            }
+                        }
+                    }
+                    if mi(ui, "Paste as Quotation", "", has) {
+                        if let Some(s) = self.sessions.get_mut(self.active) {
+                            s.paste_quote = true;
+                        }
+                        ctx.send_viewport_cmd(egui::ViewportCommand::RequestPaste);
+                        self.focus_terminal = true;
+                    }
+                    if mi(ui, "Select All", "Ctrl+Shift+A", has) {
+                        if let Some(s) = self.sessions.get_mut(self.active) {
+                            s.select_all();
+                        }
+                    }
+                    if mi(ui, "Find...", "", has) {
+                        self.find.open = true;
+                    }
+                    ui.separator();
+                    if mi(ui, "Print Selection", "", true) {
+                        self.print_text(true);
+                    }
+                    ui.separator();
+                    if mi(ui, "Go to Command Window", "Alt+G", true) {
+                        self.settings.show_command_window = true;
+                        ctx.memory_mut(|m| m.request_focus(egui::Id::new("command_line")));
+                    }
+                    if mi(ui, "Go to Session Manager", "Alt+M", true) {
+                        self.side = Some(Side::SessionManager);
+                    }
+                    if mi(ui, "Go to Command Manager", "Alt+J", true) {
+                        self.settings.show_command_manager = true;
+                        self.side = Some(Side::CommandManager);
+                    }
+                    if mi(ui, "Go to Active Sessions", "Alt+Z", true) {
+                        self.side = Some(Side::ActiveSessions);
+                    }
+                    ui.separator();
+                    if mi(ui, "Clear Scrollback", "", has) {
+                        if let Some(s) = self.sessions.get_mut(self.active) {
+                            s.clear_scrollback();
+                        }
+                    }
+                    if mi(ui, "Clear Screen", "", has) {
+                        if let Some(s) = self.sessions.get_mut(self.active) {
+                            s.clear_screen();
+                        }
+                    }
+                    if mi(ui, "Clear Screen and Scrollback", "", has) {
+                        if let Some(s) = self.sessions.get_mut(self.active) {
+                            s.clear_all();
+                        }
+                    }
+                    ui.separator();
+                    if mi(ui, "Send Break", "", connected) {
+                        if let Some(s) = self.sessions.get_mut(self.active) {
+                            s.send_break();
+                        }
+                    }
+                    if mi(ui, "Reset", "", true) {
+                        if let Some(s) = self.sessions.get_mut(self.active) {
+                            s.reset();
+                        }
+                    }
+                })
+                .response,
+            );
+            menus.push(
+                ui.menu_button(bar_title(&ctx, "View", bar_ul), |ui| {
+                    ui.set_min_width(250.0);
+                    let st = &mut self.settings;
+                    mcheck(ui, &mut st.show_menu_bar, "Menu Bar", true);
+                    mcheck(ui, &mut st.show_toolbar, "Toolbar", true);
+                    mcheck(ui, &mut st.show_command_window, "Command Window", true);
+                    mcheck(ui, &mut st.show_connect_bar, "Connect Bar", true);
+                    mcheck(ui, &mut st.show_status_bar, "Status Bar", true);
+                    mcheck(ui, &mut st.show_button_bar, "Button Bar", true);
+                    mcheck(ui, &mut st.show_tabs, "Session Tabs", true);
+                    mcheck(ui, &mut st.show_tab_sm, "Session Manager", true);
+                    mcheck(ui, &mut st.show_command_manager, "Command Manager", true);
+                    mcheck(ui, &mut st.show_tab_as, "Active Sessions", true);
+                    ui.separator();
+                    mcheck(ui, &mut st.show_hex_view, "Hex View", true);
+                    ui.separator();
+                    sub_menu(ui, "Themes", |ui| {
+                        for key in [
+                            "System",
+                            "Native",
+                            "Carbon",
+                            "VS Blue",
+                            "VS Dark",
+                            "VS White",
+                            "Office White",
+                        ] {
+                            if mradio(ui, self.settings.theme == key, key) {
+                                self.settings.theme = key.to_string();
+                                apply_theme(&ctx, key);
+                                self.dirty = true;
                             }
                         }
                     });
-                }
-                ui.separator();
-                if mi(ui, "Change Configuration Passphrase...", "", true) {
-                    self.pass_dlg = Some(PassDlg::default());
-                }
-                ui.separator();
-                if mi(ui, "Export Settings...", "", true) {
-                    let p = config::data_dir().join("settings-export.json").to_string_lossy().into_owned();
-                    self.prompt(Prompt::ExportSettings, "Export Settings", "Export to:", p);
-                }
-                if mi(ui, "Import Settings from XML File...", "", true) {
-                    self.prompt(Prompt::ImportSettings, "Import Settings", "Settings file:", String::new());
-                }
-                if mi(ui, "Import Settings from Text File...", "", true) {
-                    self.prompt(Prompt::ImportSettings, "Import Settings", "Settings file:", String::new());
-                }
-            }).response);
-            menus.push(ui.menu_button(bar_title(&ctx, "Window", bar_ul), |ui| {
-                ui.set_min_width(210.0);
-                if mradio(ui, self.layout == Layout::Tabs, "Tabs") {
-                    self.layout = Layout::Tabs;
-                }
-                if mradio(ui, self.layout == Layout::TileV, "Tile Vertically") {
-                    self.layout = Layout::TileV;
-                }
-                if mradio(ui, self.layout == Layout::TileH, "Tile Horizontally") {
-                    self.layout = Layout::TileH;
-                }
-                if mradio(ui, self.layout == Layout::Cascade, "Cascade") {
-                    self.layout = Layout::Cascade;
-                }
-                ui.separator();
-                if mi(ui, "Single Tab Group", "", self.n_groups > 1) {
-                    // every tab goes back to the one tab bar, keeping its order
-                    self.group_of.clear();
-                    self.n_groups = 1;
-                }
-                if has {
+                    sub_menu(ui, "Zoom", |ui| {
+                        if mi(ui, "Zoom in", "Ctrl+=", true) {
+                            self.zoom = (self.zoom + 0.1).min(3.0);
+                        }
+                        if mi(ui, "Zoom out", "Ctrl+-", true) {
+                            self.zoom = (self.zoom - 0.1).max(0.5);
+                        }
+                        ui.separator();
+                        if mi(ui, "100%", "Ctrl+0", true) {
+                            self.zoom = 1.0;
+                        }
+                    });
                     ui.separator();
-                }
-                for i in 0..self.sessions.len() {
-                    let label = format!("{} {}", i + 1, self.sessions[i].title);
-                    if ui.radio(i == self.active, label).clicked() {
-                        self.active = i;
-                        self.focus_terminal = true;
+                    let mut tr = self.transparent;
+                    if mcheck(ui, &mut tr, "Window Transparency", true) {
+                        self.transparent = tr;
+                        config::set_window_opacity(if tr { 200 } else { 255 });
                     }
-                }
-            }).response);
-            menus.push(ui.menu_button(bar_title(&ctx, "Help", bar_ul), |ui| {
-                ui.set_min_width(200.0);
-                if mi_plain(ui, "About Yetty...", true) {
-                    self.about_open = true;
-                }
-            }).response);
+                    ui.separator();
+                    let mut hs = hs_on;
+                    if mcheck(ui, &mut hs, "Horizontal Scroll Bar", has) {
+                        if let Some(s) = self.sessions.get_mut(self.active) {
+                            s.cfg.show_hscrollbar = hs;
+                        }
+                    }
+                    let mut vs = vs_on;
+                    if mcheck(ui, &mut vs, "Vertical Scroll Bar", has) {
+                        if let Some(s) = self.sessions.get_mut(self.active) {
+                            s.cfg.show_scrollbar = vs;
+                        }
+                    }
+                    ui.separator();
+                    let mut top = self.always_on_top;
+                    if mcheck(ui, &mut top, "Always on Top", true) {
+                        self.always_on_top = top;
+                        ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(if top {
+                            egui::WindowLevel::AlwaysOnTop
+                        } else {
+                            egui::WindowLevel::Normal
+                        }));
+                    }
+                    let full = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
+                    if mi(
+                        ui,
+                        if full {
+                            "✓ Full Screen"
+                        } else {
+                            "Full Screen"
+                        },
+                        "Alt+Enter",
+                        true,
+                    ) {
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(!full));
+                    }
+                })
+                .response,
+            );
+            menus.push(
+                ui.menu_button(bar_title(&ctx, "Options", bar_ul), |ui| {
+                    ui.set_min_width(260.0);
+                    if mi(ui, "Session Options...", "", has) {
+                        self.open_options(EditTarget::Active, "connection");
+                    }
+                    sub_menu(ui, "Configure", |ui| {
+                        if mi(ui, "Default Session...", "", true) {
+                            self.open_options(EditTarget::DefaultSession, "connection");
+                        }
+                        if mi(ui, "Local Shell Defaults...", "", true) {
+                            self.open_options(EditTarget::DefaultLocal, "connection");
+                        }
+                        if mi(ui, "Serial Defaults...", "", true) {
+                            self.open_options(EditTarget::DefaultSerial, "connection");
+                        }
+                        mi(ui, "RDP Defaults...", "", false);
+                    });
+                    if mi(ui, "Global Options...", "", true) {
+                        self.global_open = true;
+                    }
+                    ui.separator();
+                    let mut kh = self.settings.keyword_highlighting;
+                    if mcheck(ui, &mut kh, "Keyword Highlighting", has) {
+                        self.settings.keyword_highlighting = kh;
+                        self.dirty = true;
+                    }
+                    if mi(ui, "Keyword Highlighting Properties...", "", has) {
+                        self.open_options(EditTarget::Active, "keywords");
+                    }
+                    mcheck(ui, &mut self.settings.use_firewall, "Use Firewall", true);
+                    ui.separator();
+                    mcheck(ui, &mut self.settings.auto_save, "Auto Save Options", true);
+                    if mi(ui, "Save Settings Now", "", true) {
+                        self.settings.save();
+                        self.status_msg = "Settings saved".into();
+                    }
+                })
+                .response,
+            );
+            menus.push(
+                ui.menu_button(bar_title(&ctx, "Transfer", bar_ul), |ui| {
+                    ui.set_min_width(240.0);
+                    if mi(ui, "Send ASCII...", "", has) {
+                        self.prompt(
+                            Prompt::SendAscii,
+                            "Send ASCII",
+                            "Text file to send:",
+                            String::new(),
+                        );
+                    }
+                    if mi(
+                        ui,
+                        if capturing {
+                            "✓ Receive ASCII..."
+                        } else {
+                            "Receive ASCII..."
+                        },
+                        "",
+                        has,
+                    ) {
+                        if capturing {
+                            if let Some(s) = self.sessions.get_mut(self.active) {
+                                s.capture_file = None;
+                            }
+                            self.status_msg = "Stopped receiving".into();
+                        } else {
+                            let base = self.download_dir().to_string_lossy().into_owned();
+                            self.prompt(
+                                Prompt::ReceiveAscii,
+                                "Receive ASCII",
+                                "Save received text to:",
+                                format!("{base}\\received.txt"),
+                            );
+                        }
+                    }
+                    ui.separator();
+                    if mi(ui, "Send Binary...", "", has) {
+                        self.prompt(
+                            Prompt::SendBinary,
+                            "Send Binary",
+                            "File to send:",
+                            String::new(),
+                        );
+                    }
+                    ui.separator();
+                    if mi(ui, "Send Kermit...", "", has) {
+                        self.prompt(
+                            Prompt::XferSend(Proto::Kermit),
+                            "Send Kermit",
+                            "File to send:",
+                            String::new(),
+                        );
+                    }
+                    if mi(ui, "Receive Kermit...", "", has) {
+                        let p = self.download_dir().to_string_lossy().into_owned();
+                        self.prompt(
+                            Prompt::XferRecv(Proto::Kermit),
+                            "Receive Kermit",
+                            "Save received files in this folder:",
+                            p,
+                        );
+                    }
+                    ui.separator();
+                    if mi(ui, "Send Xmodem...", "", has) {
+                        self.prompt(
+                            Prompt::XferSend(if x1k { Proto::Xmodem1k } else { Proto::Xmodem }),
+                            "Send Xmodem",
+                            "File to send:",
+                            String::new(),
+                        );
+                    }
+                    if mi(ui, "Receive Xmodem...", "", has) {
+                        let p = self
+                            .download_dir()
+                            .join("xmodem.bin")
+                            .to_string_lossy()
+                            .into_owned();
+                        self.prompt(
+                            Prompt::XferRecv(Proto::Xmodem),
+                            "Receive Xmodem",
+                            "Save the received file as:",
+                            p,
+                        );
+                    }
+                    ui.separator();
+                    if mi(ui, "Send Ymodem...", "", has) {
+                        self.prompt(
+                            Prompt::XferSend(Proto::Ymodem),
+                            "Send Ymodem",
+                            "File to send:",
+                            String::new(),
+                        );
+                    }
+                    if mi(ui, "Receive Ymodem...", "", has) {
+                        let p = self.download_dir().to_string_lossy().into_owned();
+                        self.prompt(
+                            Prompt::XferRecv(Proto::Ymodem),
+                            "Receive Ymodem",
+                            "Save received files in this folder:",
+                            p,
+                        );
+                    }
+                    ui.separator();
+                    if mi(ui, "Zmodem Upload List...", "", true) {
+                        self.zm_open = true;
+                    }
+                    if mi(
+                        ui,
+                        "Start Zmodem Upload",
+                        "",
+                        has && !self.zm_list.is_empty(),
+                    ) {
+                        self.start_zmodem_upload();
+                    }
+                    ui.separator();
+                    // The TFTP server does not need a session: it can be started at any time.
+                    if mi(
+                        ui,
+                        if tftp_on {
+                            "Stop TFTP Server"
+                        } else {
+                            "Start TFTP Server"
+                        },
+                        "",
+                        true,
+                    ) {
+                        if tftp_on {
+                            self.tftp = None;
+                            self.status_msg = "TFTP server stopped".into();
+                        } else {
+                            let p = config::data_dir()
+                                .join("tftp")
+                                .to_string_lossy()
+                                .into_owned();
+                            self.prompt(
+                                Prompt::TftpFolder,
+                                "Start TFTP Server",
+                                "Folder to serve (files are sent from and saved to it):",
+                                p,
+                            );
+                        }
+                    }
+                    if tftp_on && mi(ui, "TFTP Server Activity...", "", true) {
+                        self.tftp_open = true;
+                    }
+                })
+                .response,
+            );
+            menus.push(
+                ui.menu_button(bar_title(&ctx, "Script", bar_ul), |ui| {
+                    ui.set_min_width(240.0);
+                    if mi(ui, "Run...", "", true) {
+                        // The original opens the Windows file dialog straight away.
+                        ui.close();
+                        if let Some(p) = crate::nativedlg::open_script("Select Script to Run") {
+                            if let Some(s) = self.sessions.get(self.active) {
+                                let id = s.id;
+                                self.start_script(id, &p);
+                            } else {
+                                self.start_script(0, &p);
+                            }
+                        }
+                    }
+                    if mi(ui, "Edit...", "", true) {
+                        ui.close();
+                        if let Some(p) = crate::nativedlg::open_script("Select Script to Edit") {
+                            let _ = std::process::Command::new("notepad.exe").arg(&p).spawn();
+                        }
+                    }
+                    if mi(ui, "Cancel", "", !self.scripts.is_empty()) {
+                        self.scripts.clear();
+                        self.status_msg = "Script cancelled".into();
+                    }
+                    ui.separator();
+                    if mi(
+                        ui,
+                        "Start Recording Script",
+                        "",
+                        !recording && !self.rec_wait,
+                    ) {
+                        if let Some(s) = self.sessions.get_mut(self.active) {
+                            s.recording = Some(Vec::new());
+                            self.rec_target = Some(s.id);
+                            self.status_msg = "Recording script".into();
+                        } else {
+                            self.rec_wait = true;
+                            self.status_msg = "Recording starts when a session is opened".into();
+                        }
+                    }
+                    if mi(ui, "Stop Recording Script...", "", recording) {
+                        let p = config::data_dir()
+                            .join("scripts")
+                            .join("recorded.txt")
+                            .to_string_lossy()
+                            .into_owned();
+                        self.prompt(
+                            Prompt::SaveScript,
+                            "Save Recorded Script",
+                            "Save script to:",
+                            p,
+                        );
+                    }
+                    if mi(
+                        ui,
+                        "Cancel Recording Script",
+                        "",
+                        recording || self.rec_wait,
+                    ) {
+                        self.rec_wait = false;
+                        if let Some(s) = self.sessions.get_mut(self.active) {
+                            s.recording = None;
+                        }
+                    }
+                    ui.separator();
+                    if self.settings.recent_scripts.is_empty() {
+                        mi(ui, "Recent Script", "", false);
+                    } else {
+                        sub_menu(ui, "Recent Script", |ui| {
+                            let list = self.settings.recent_scripts.clone();
+                            for p in list {
+                                if ui.button(&p).clicked() {
+                                    let id =
+                                        self.sessions.get(self.active).map(|s| s.id).unwrap_or(0);
+                                    self.start_script(id, &p);
+                                }
+                            }
+                        });
+                    }
+                })
+                .response,
+            );
+            menus.push(
+                ui.menu_button(bar_title(&ctx, "Tools", bar_ul), |ui| {
+                    ui.set_min_width(320.0);
+                    if mi(ui, "Keymap Editor...", "", true) {
+                        self.keymap_open = true;
+                    }
+                    if mi(ui, "Create Public Key...", "", true) {
+                        self.tool_create_public_key(&ctx);
+                    }
+                    if mi(ui, "Convert Private Key to OpenSSH Format...", "", true) {
+                        self.prompt(
+                            Prompt::ConvertKey,
+                            "Convert Private Key",
+                            "Private key file:",
+                            crate::config::ssh_dir(),
+                        );
+                    }
+                    if mi(ui, "Export Public Key from Certificate...", "", true) {
+                        ui.close();
+                        if let Some(p) = config::browse_file(
+                            "Select the certificate (PEM, DER, PFX or P12)",
+                            None,
+                        ) {
+                            match crate::certkey::public_key_from_certificate(&p) {
+                                Ok(line) => {
+                                    if let Some(dest) = config::browse_save("Export Public Key") {
+                                        self.status_msg =
+                                            match std::fs::write(&dest, format!("{line}\n")) {
+                                                Ok(()) => format!("Public key exported to {dest}"),
+                                                Err(e) => format!("Could not write {dest}: {e}"),
+                                            };
+                                    }
+                                }
+                                Err(e) => self.error_msg = Some(e),
+                            }
+                        }
+                    }
+                    if mi(ui, "Public-Key Assistant...", "", has) {
+                        self.keyassist_open = true;
+                    }
+                    ui.separator();
+                    if mi(ui, "Manage Agent Keys...", "", true) {
+                        self.tool_manage_agent_keys(&ctx);
+                    }
+                    if mi(ui, "Manage Saved Credentials...", "", true) {
+                        self.creds_open = true;
+                    }
+                    if self.settings.credentials.is_empty() {
+                        mi(ui, "Change Credentials Password", "", false);
+                    } else {
+                        sub_menu(ui, "Change Credentials Password", |ui| {
+                            let names: Vec<String> = self
+                                .settings
+                                .credentials
+                                .iter()
+                                .map(|c| c.name.clone())
+                                .collect();
+                            for (i, n) in names.iter().enumerate() {
+                                if ui.button(n).clicked() {
+                                    self.prompt(
+                                        Prompt::CredPassword(i),
+                                        "Change Credentials Password",
+                                        "New password:",
+                                        String::new(),
+                                    );
+                                }
+                            }
+                        });
+                    }
+                    ui.separator();
+                    if mi(ui, "Change Configuration Passphrase...", "", true) {
+                        self.pass_dlg = Some(PassDlg::default());
+                    }
+                    ui.separator();
+                    if mi(ui, "Export Settings...", "", true) {
+                        let p = config::data_dir()
+                            .join("settings-export.json")
+                            .to_string_lossy()
+                            .into_owned();
+                        self.prompt(Prompt::ExportSettings, "Export Settings", "Export to:", p);
+                    }
+                    if mi(ui, "Import Settings from XML File...", "", true) {
+                        self.prompt(
+                            Prompt::ImportSettings,
+                            "Import Settings",
+                            "Settings file:",
+                            String::new(),
+                        );
+                    }
+                    if mi(ui, "Import Settings from Text File...", "", true) {
+                        self.prompt(
+                            Prompt::ImportSettings,
+                            "Import Settings",
+                            "Settings file:",
+                            String::new(),
+                        );
+                    }
+                })
+                .response,
+            );
+            menus.push(
+                ui.menu_button(bar_title(&ctx, "Window", bar_ul), |ui| {
+                    ui.set_min_width(210.0);
+                    if mradio(ui, self.layout == Layout::Tabs, "Tabs") {
+                        self.layout = Layout::Tabs;
+                    }
+                    if mradio(ui, self.layout == Layout::TileV, "Tile Vertically") {
+                        self.layout = Layout::TileV;
+                    }
+                    if mradio(ui, self.layout == Layout::TileH, "Tile Horizontally") {
+                        self.layout = Layout::TileH;
+                    }
+                    if mradio(ui, self.layout == Layout::Cascade, "Cascade") {
+                        self.layout = Layout::Cascade;
+                    }
+                    ui.separator();
+                    if mi(ui, "Single Tab Group", "", self.n_groups > 1) {
+                        // every tab goes back to the one tab bar, keeping its order
+                        self.group_of.clear();
+                        self.n_groups = 1;
+                    }
+                    if has {
+                        ui.separator();
+                    }
+                    for i in 0..self.sessions.len() {
+                        let label = format!("{} {}", i + 1, self.sessions[i].title);
+                        if ui.radio(i == self.active, label).clicked() {
+                            self.active = i;
+                            self.focus_terminal = true;
+                        }
+                    }
+                })
+                .response,
+            );
+            menus.push(
+                ui.menu_button(bar_title(&ctx, "Help", bar_ul), |ui| {
+                    ui.set_min_width(200.0);
+                    if mi_plain(ui, "About Yetty...", true) {
+                        self.about_open = true;
+                    }
+                })
+                .response,
+            );
         });
         if let Some(i) = alt_open {
             for (j, r) in menus.iter().enumerate() {
@@ -3099,7 +3979,9 @@ impl YettyApp {
             ctx.request_repaint();
         }
         // Like the original: while a menu is open, moving the pointer over another menu opens that one.
-        let any_open = menus.iter().any(|r| egui::Popup::is_id_open(&ctx, egui::Popup::default_response_id(r)));
+        let any_open = menus
+            .iter()
+            .any(|r| egui::Popup::is_id_open(&ctx, egui::Popup::default_response_id(r)));
         if any_open {
             if let Some(p) = ctx.pointer_hover_pos() {
                 for r in &menus {
@@ -3158,13 +4040,23 @@ impl YettyApp {
             if icon_button(ui, "\u{E721}", "Find", has) {
                 self.find.open = true;
             }
-            let r = ui.add(egui::TextEdit::singleline(&mut self.keyword_bar).id(egui::Id::new("keyword_bar")).hint_text("Keyword <Alt+U>").desired_width(120.0));
-            let go = icon_button(ui, "\u{E721}", "Find keyword", has) || (r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)));
+            let r = ui.add(
+                egui::TextEdit::singleline(&mut self.keyword_bar)
+                    .id(egui::Id::new("keyword_bar"))
+                    .hint_text("Keyword <Alt+U>")
+                    .desired_width(120.0),
+            );
+            let go = icon_button(ui, "\u{E721}", "Find keyword", has)
+                || (r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)));
             if go && !self.keyword_bar.trim().is_empty() {
                 let q = self.keyword_bar.clone();
                 if let Some(s) = self.sessions.get_mut(self.active) {
                     let found = s.find(&q, false, false);
-                    self.status_msg = if found { "Ready".into() } else { format!("\"{q}\" not found") };
+                    self.status_msg = if found {
+                        "Ready".into()
+                    } else {
+                        format!("\"{q}\" not found")
+                    };
                 }
             }
             tb_sep(ui);
@@ -3202,21 +4094,34 @@ impl YettyApp {
         }
         let asn = self.side == Some(Side::ActiveSessions);
         if self.settings.show_tab_as && side_tab(ui, "Active Sessions", asn).clicked() {
-            self.side = if asn { None } else { Some(Side::ActiveSessions) };
+            self.side = if asn {
+                None
+            } else {
+                Some(Side::ActiveSessions)
+            };
         }
     }
 
     fn side_header(&mut self, ui: &mut egui::Ui, title: &str) {
         // the blue line on top of a docked panel in the original
         let top = ui.max_rect();
-        ui.painter().hline(top.x_range().expand(4.0), top.min.y - 3.0, egui::Stroke::new(2.0, Color32::from_rgb(0x00, 0x78, 0xd4)));
+        ui.painter().hline(
+            top.x_range().expand(4.0),
+            top.min.y - 3.0,
+            egui::Stroke::new(2.0, Color32::from_rgb(0x00, 0x78, 0xd4)),
+        );
         ui.horizontal(|ui| {
             ui.label(RichText::new(title).size(12.0));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if icon_button(ui, "\u{E711}", "Close", true) {
                     self.side = None;
                 }
-                if icon_button(ui, if self.pinned { "\u{E840}" } else { "\u{E718}" }, "Auto Hide", true) {
+                if icon_button(
+                    ui,
+                    if self.pinned { "\u{E840}" } else { "\u{E718}" },
+                    "Auto Hide",
+                    true,
+                ) {
                     self.pinned = !self.pinned;
                 }
                 // dotted grip between the title and the buttons
@@ -3224,7 +4129,11 @@ impl YettyApp {
                 let (r, _) = ui.allocate_exact_size(egui::vec2(w, 12.0), Sense::hover());
                 let mut x = r.min.x + 4.0;
                 while x < r.max.x {
-                    ui.painter().circle_filled(Pos2::new(x, r.center().y), 0.5, Color32::from_gray(110));
+                    ui.painter().circle_filled(
+                        Pos2::new(x, r.center().y),
+                        0.5,
+                        Color32::from_gray(110),
+                    );
                     x += 3.0;
                 }
             });
@@ -3235,7 +4144,10 @@ impl YettyApp {
         let ctx = ui.ctx().clone();
         self.sm_hover = ui.rect_contains_pointer(ui.max_rect());
         self.side_header(ui, "Session Manager");
-        let sel_ok = self.selected.map(|i| i < self.settings.sessions.len()).unwrap_or(false);
+        let sel_ok = self
+            .selected
+            .map(|i| i < self.settings.sessions.len())
+            .unwrap_or(false);
         let mut tact: Option<TreeAct> = None;
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 2.0;
@@ -3276,7 +4188,12 @@ impl YettyApp {
                 .desired_width(f32::INFINITY),
         );
         ui.add_space(2.0);
-        let tree = build_tree(&self.settings.sessions, &self.settings.folders, &self.filter, self.settings.global.sort_order);
+        let tree = build_tree(
+            &self.settings.sessions,
+            &self.settings.folders,
+            &self.filter,
+            self.settings.global.sort_order,
+        );
         let mut tc = TreeCtx {
             sessions: &self.settings.sessions,
             selected: self.selected,
@@ -3290,13 +4207,18 @@ impl YettyApp {
             open_list: self.settings.tree_open.clone(),
             open_changed: false,
         };
-        egui::Frame::new().stroke(egui::Stroke::new(1.0, Color32::from_gray(70))).inner_margin(2).show(ui, |ui| {
-            ui.set_min_height(ui.available_height() - 4.0);
-            egui::ScrollArea::both().auto_shrink([false, false]).show(ui, |ui| {
-                ui.set_min_width(ui.available_width());
-                draw_node(ui, &tree, &mut tc, true);
+        egui::Frame::new()
+            .stroke(egui::Stroke::new(1.0, Color32::from_gray(70)))
+            .inner_margin(2)
+            .show(ui, |ui| {
+                ui.set_min_height(ui.available_height() - 4.0);
+                egui::ScrollArea::both()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        ui.set_min_width(ui.available_width());
+                        draw_node(ui, &tree, &mut tc, true);
+                    });
             });
-        });
         let act = tc.act.take();
         let (open_list, open_changed) = (std::mem::take(&mut tc.open_list), tc.open_changed);
         self.selected = tc.selected;
@@ -3315,15 +4237,28 @@ impl YettyApp {
         if let Some(f) = &self.selected_folder {
             return f.clone();
         }
-        self.selected.and_then(|i| self.settings.sessions.get(i)).map(|s| s.folder.clone()).unwrap_or_default()
+        self.selected
+            .and_then(|i| self.settings.sessions.get(i))
+            .map(|s| s.folder.clone())
+            .unwrap_or_default()
     }
 
     fn tree_action(&mut self, a: TreeAct, ctx: &egui::Context) {
         if matches!(a, TreeAct::Delete) {
-            let folder = self.selected_folder.as_ref().map(|f| !f.is_empty()).unwrap_or(false);
-            let session = self.selected.map(|i| i < self.settings.sessions.len()).unwrap_or(false);
+            let folder = self
+                .selected_folder
+                .as_ref()
+                .map(|f| !f.is_empty())
+                .unwrap_or(false);
+            let session = self
+                .selected
+                .map(|i| i < self.settings.sessions.len())
+                .unwrap_or(false);
             if folder || session {
-                self.ask("Are you sure you want to delete the selected item(s)?", ConfirmAct::DeleteTree);
+                self.ask(
+                    "Are you sure you want to delete the selected item(s)?",
+                    ConfirmAct::DeleteTree,
+                );
             }
             return;
         }
@@ -3370,7 +4305,11 @@ impl YettyApp {
             }
             TreeAct::CopyPath => {
                 if let Some(s) = self.selected.and_then(|i| self.settings.sessions.get(i)) {
-                    let p = if s.folder.is_empty() { format!("Sessions/{}", s.display_name()) } else { format!("Sessions/{}/{}", s.folder, s.display_name()) };
+                    let p = if s.folder.is_empty() {
+                        format!("Sessions/{}", s.display_name())
+                    } else {
+                        format!("Sessions/{}/{}", s.folder, s.display_name())
+                    };
                     ctx.copy_text(p);
                 }
             }
@@ -3378,7 +4317,12 @@ impl YettyApp {
                 if let Some(i) = self.selected {
                     if let Some(c) = self.settings.sessions.get(i) {
                         let suggestion = self.unique_session_name(&c.folder, &c.display_name());
-                        self.prompt(Prompt::DuplicateSession(i), "Duplicate Session", "Name of the new session:", suggestion);
+                        self.prompt(
+                            Prompt::DuplicateSession(i),
+                            "Duplicate Session",
+                            "Name of the new session:",
+                            suggestion,
+                        );
                     }
                 }
             }
@@ -3406,8 +4350,12 @@ impl YettyApp {
             TreeAct::FindNext => {}
             TreeAct::Delete => {
                 if let Some(f) = self.selected_folder.clone().filter(|f| !f.is_empty()) {
-                    self.settings.sessions.retain(|s| s.folder != f && !s.folder.starts_with(&format!("{f}/")));
-                    self.settings.folders.retain(|x| x != &f && !x.starts_with(&format!("{f}/")));
+                    self.settings
+                        .sessions
+                        .retain(|s| s.folder != f && !s.folder.starts_with(&format!("{f}/")));
+                    self.settings
+                        .folders
+                        .retain(|x| x != &f && !x.starts_with(&format!("{f}/")));
                     self.selected_folder = None;
                     self.dirty = true;
                 } else if let Some(i) = self.selected {
@@ -3432,14 +4380,20 @@ impl YettyApp {
             TreeAct::Shortcut => {
                 if let Some(s) = self.selected.and_then(|i| self.settings.sessions.get(i)) {
                     if let Ok(exe) = std::env::current_exe() {
-                        let name: String = s.display_name().chars().map(|c| if "<>:\"/\\|?*".contains(c) { '_' } else { c }).collect();
+                        let name: String = s
+                            .display_name()
+                            .chars()
+                            .map(|c| if "<>:\"/\\|?*".contains(c) { '_' } else { c })
+                            .collect();
                         let script = format!(
                             "$d=[Environment]::GetFolderPath('Desktop');$w=New-Object -ComObject WScript.Shell;$l=$w.CreateShortcut(\"$d\\{}.lnk\");$l.TargetPath='{}';$l.Arguments='--session \"{}\"';$l.Save()",
                             name.replace('\'', "''"),
                             exe.display().to_string().replace('\'', "''"),
                             s.display_name().replace('\'', "''")
                         );
-                        let _ = std::process::Command::new("powershell.exe").args(["-NoProfile", "-WindowStyle", "Hidden", "-Command", &script]).spawn();
+                        let _ = std::process::Command::new("powershell.exe")
+                            .args(["-NoProfile", "-WindowStyle", "Hidden", "-Command", &script])
+                            .spawn();
                         self.status_msg = "Desktop shortcut created".into();
                     }
                 }
@@ -3451,16 +4405,23 @@ impl YettyApp {
                 self.settings = Settings::load();
             }
             TreeAct::Sort(asc) => {
-                self.settings.sessions.sort_by_key(|s| s.display_name().to_lowercase());
+                self.settings
+                    .sessions
+                    .sort_by_key(|s| s.display_name().to_lowercase());
                 if !asc {
                     self.settings.sessions.reverse();
                 }
                 self.selected = None;
                 self.dirty = true;
             }
-            TreeAct::ToggleDescriptions => self.settings.show_descriptions = !self.settings.show_descriptions,
+            TreeAct::ToggleDescriptions => {
+                self.settings.show_descriptions = !self.settings.show_descriptions
+            }
             TreeAct::Export => {
-                let p = config::data_dir().join("sessions-export.json").to_string_lossy().into_owned();
+                let p = config::data_dir()
+                    .join("sessions-export.json")
+                    .to_string_lossy()
+                    .into_owned();
                 self.prompt(Prompt::ExportSessions, "Export Session(s)", "Export to:", p);
             }
             TreeAct::Move(item, target) => match item {
@@ -3469,19 +4430,38 @@ impl YettyApp {
                         if s.folder.trim_matches('/') != target.trim_matches('/') {
                             s.folder = target.clone();
                             self.dirty = true;
-                            self.status_msg = if target.is_empty() { "Session moved to Sessions".into() } else { format!("Session moved to {target}") };
+                            self.status_msg = if target.is_empty() {
+                                "Session moved to Sessions".into()
+                            } else {
+                                format!("Session moved to {target}")
+                            };
                         }
                     }
                 }
                 DragItem::Folder(from) => {
                     let last = from.rsplit('/').next().unwrap_or("").to_string();
-                    let new = if target.is_empty() { last.clone() } else { format!("{target}/{last}") };
+                    let new = if target.is_empty() {
+                        last.clone()
+                    } else {
+                        format!("{target}/{last}")
+                    };
                     if new == from {
                         // dropped where it already is
                     } else if target == from || target.starts_with(&format!("{from}/")) {
                         self.error_msg = Some("A folder cannot be moved into itself.".into());
-                    } else if self.settings.folders.iter().any(|f| f.eq_ignore_ascii_case(&new)) || self.settings.sessions.iter().any(|s| s.folder.eq_ignore_ascii_case(&new)) {
-                        self.error_msg = Some(format!("A folder named \"{last}\" already exists there."));
+                    } else if self
+                        .settings
+                        .folders
+                        .iter()
+                        .any(|f| f.eq_ignore_ascii_case(&new))
+                        || self
+                            .settings
+                            .sessions
+                            .iter()
+                            .any(|s| s.folder.eq_ignore_ascii_case(&new))
+                    {
+                        self.error_msg =
+                            Some(format!("A folder named \"{last}\" already exists there."));
                     } else {
                         for s in &mut self.settings.sessions {
                             if s.folder == from {
@@ -3507,14 +4487,25 @@ impl YettyApp {
             },
             TreeAct::Properties => {
                 if let Some(n) = self.sel_default.filter(|_| self.selected.is_none()) {
-                    self.open_options(if n == 0 { EditTarget::DefaultLocal } else { EditTarget::DefaultSerial }, "connection");
+                    self.open_options(
+                        if n == 0 {
+                            EditTarget::DefaultLocal
+                        } else {
+                            EditTarget::DefaultSerial
+                        },
+                        "connection",
+                    );
                 } else if let Some(i) = self.selected {
                     self.open_options(EditTarget::Saved(i), "connection");
                 }
             }
             TreeAct::NewFolder => {
                 let base = self.selected_folder_path();
-                let hint = if base.is_empty() { String::new() } else { format!("{base}/") };
+                let hint = if base.is_empty() {
+                    String::new()
+                } else {
+                    format!("{base}/")
+                };
                 self.prompt(Prompt::NewFolder, "New Folder", "Folder name:", hint);
             }
         }
@@ -3523,25 +4514,27 @@ impl YettyApp {
     fn active_sessions_panel(&mut self, ui: &mut egui::Ui) {
         self.side_header(ui, "Active Sessions");
         let mut pick = None;
-        egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-            for (i, s) in self.sessions.iter().enumerate() {
-                let dot = match s.status {
-                    Status::Connected => Color32::from_rgb(0x2e, 0xa0, 0x43),
-                    Status::Connecting => Color32::from_rgb(0xe0, 0xa0, 0x00),
-                    Status::Disconnected(_) => Color32::from_rgb(0xc8, 0x32, 0x32),
-                };
-                ui.horizontal(|ui| {
-                    let (r, _) = ui.allocate_exact_size(egui::vec2(10.0, 14.0), Sense::hover());
-                    ui.painter().circle_filled(r.center(), 4.0, dot);
-                    if ui.selectable_label(i == self.active, &s.title).clicked() {
-                        pick = Some(i);
-                    }
-                });
-            }
-            if self.sessions.is_empty() {
-                ui.weak("No active sessions.");
-            }
-        });
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                for (i, s) in self.sessions.iter().enumerate() {
+                    let dot = match s.status {
+                        Status::Connected => Color32::from_rgb(0x2e, 0xa0, 0x43),
+                        Status::Connecting => Color32::from_rgb(0xe0, 0xa0, 0x00),
+                        Status::Disconnected(_) => Color32::from_rgb(0xc8, 0x32, 0x32),
+                    };
+                    ui.horizontal(|ui| {
+                        let (r, _) = ui.allocate_exact_size(egui::vec2(10.0, 14.0), Sense::hover());
+                        ui.painter().circle_filled(r.center(), 4.0, dot);
+                        if ui.selectable_label(i == self.active, &s.title).clicked() {
+                            pick = Some(i);
+                        }
+                    });
+                }
+                if self.sessions.is_empty() {
+                    ui.weak("No active sessions.");
+                }
+            });
         if let Some(i) = pick {
             self.active = i;
             self.focus_terminal = true;
@@ -3552,8 +4545,15 @@ impl YettyApp {
         let ctx = ui.ctx().clone();
         self.cm_hover = ui.rect_contains_pointer(ui.max_rect());
         self.side_header(ui, "Command Manager");
-        let sel_ok = self.cmd_sel.map(|i| i < self.settings.commands.len()).unwrap_or(false);
-        let has_folder = self.cmd_sel_folder.as_ref().map(|f| !f.is_empty()).unwrap_or(false);
+        let sel_ok = self
+            .cmd_sel
+            .map(|i| i < self.settings.commands.len())
+            .unwrap_or(false);
+        let has_folder = self
+            .cmd_sel_folder
+            .as_ref()
+            .map(|f| !f.is_empty())
+            .unwrap_or(false);
         let mut act: Option<CmdAct> = None;
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 2.0;
@@ -3592,12 +4592,30 @@ impl YettyApp {
         let mut sel = self.cmd_sel;
         let mut sel_folder = self.cmd_sel_folder.clone();
         let mut closed_change: Vec<(String, bool)> = Vec::new();
-        egui::Frame::new().stroke(egui::Stroke::new(1.0, Color32::from_gray(70))).inner_margin(2).show(ui, |ui| {
-            egui::ScrollArea::vertical().id_salt("cmd_tree").auto_shrink([false, false]).show(ui, |ui| {
-                ui.set_min_height(ui.available_height());
-                cmd_tree_node(ui, &self.settings, "", &filter, &mut sel, &mut sel_folder, &mut act, self.cmd_expand.take(), self.cmd_clip.is_some(), self.cmd_target, &mut closed_change);
+        egui::Frame::new()
+            .stroke(egui::Stroke::new(1.0, Color32::from_gray(70)))
+            .inner_margin(2)
+            .show(ui, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("cmd_tree")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        ui.set_min_height(ui.available_height());
+                        cmd_tree_node(
+                            ui,
+                            &self.settings,
+                            "",
+                            &filter,
+                            &mut sel,
+                            &mut sel_folder,
+                            &mut act,
+                            self.cmd_expand.take(),
+                            self.cmd_clip.is_some(),
+                            self.cmd_target,
+                            &mut closed_change,
+                        );
+                    });
             });
-        });
         self.cmd_sel = sel;
         self.cmd_sel_folder = sel_folder;
         for (k, closed) in closed_change {
@@ -3618,7 +4636,11 @@ impl YettyApp {
             .cmd_sel_folder
             .clone()
             .filter(|f| !f.is_empty())
-            .or_else(|| self.cmd_sel.and_then(|i| self.settings.commands.get(i)).map(|c| c.folder.clone()))
+            .or_else(|| {
+                self.cmd_sel
+                    .and_then(|i| self.settings.commands.get(i))
+                    .map(|c| c.folder.clone())
+            })
             .unwrap_or_default();
         match a {
             CmdAct::Send(i) => {
@@ -3634,7 +4656,12 @@ impl YettyApp {
             CmdAct::Rename => {
                 if let Some(f) = self.cmd_sel_folder.clone().filter(|f| !f.is_empty()) {
                     let last = f.rsplit('/').next().unwrap_or("").to_string();
-                    self.prompt(Prompt::RenameCmdFolder(f), "Rename Folder", "New name:", last);
+                    self.prompt(
+                        Prompt::RenameCmdFolder(f),
+                        "Rename Folder",
+                        "New name:",
+                        last,
+                    );
                 } else if let Some(i) = self.cmd_sel {
                     if let Some(c) = self.settings.commands.get(i) {
                         let l = c.label.clone();
@@ -3643,7 +4670,13 @@ impl YettyApp {
                 }
             }
             CmdAct::Add => {
-                self.cmd_edit = Some((None, config::CommandDef { folder: folder_now, ..Default::default() }));
+                self.cmd_edit = Some((
+                    None,
+                    config::CommandDef {
+                        folder: folder_now,
+                        ..Default::default()
+                    },
+                ));
             }
             CmdAct::Edit(i) => {
                 if let Some(c) = self.settings.commands.get(i) {
@@ -3680,10 +4713,17 @@ impl YettyApp {
                 }
             }
             CmdAct::Delete => {
-                self.ask("Are you sure you want to delete the selected item(s)?", ConfirmAct::DeleteCommand);
+                self.ask(
+                    "Are you sure you want to delete the selected item(s)?",
+                    ConfirmAct::DeleteCommand,
+                );
             }
             CmdAct::NewFolder => {
-                let hint = if folder_now.is_empty() { String::new() } else { format!("{folder_now}/") };
+                let hint = if folder_now.is_empty() {
+                    String::new()
+                } else {
+                    format!("{folder_now}/")
+                };
                 self.prompt(Prompt::CmdFolder, "New Folder", "Folder name:", hint);
             }
         }
@@ -3728,163 +4768,261 @@ impl YettyApp {
         // positions in `members` of the tab being dragged / dropped
         let mut drag_tab: Option<usize> = None;
         let mut drop_tab: Option<usize> = None;
-        egui::ScrollArea::horizontal().id_salt(("tabs", group.unwrap_or(0))).show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 1.0;
-                for (pos, &i) in members.iter().enumerate() {
-                    let s = &self.sessions[i];
-                    let (glyph, dot) = match s.status {
-                        Status::Connected => ("\u{2714}", Color32::from_rgb(0x1f, 0xc8, 0x1f)),
-                        Status::Connecting => ("\u{2714}", Color32::from_rgb(0xe0, 0xa0, 0x00)),
-                        Status::Disconnected(_) => ("\u{2716}", Color32::from_rgb(0xe0, 0x3c, 0x3c)),
-                    };
-                    // in a tab group the shown tab is drawn selected; the blue frame marks the active session
-                    let selected = match shown {
-                        Some(id) => s.id == id,
-                        None => i == self.active,
-                    };
-                    let focused = i == self.active;
-                    let title = if s.title.chars().count() > 30 { format!("{}…", s.title.chars().take(29).collect::<String>()) } else { s.title.clone() };
-                    let text_color = if selected { ui.visuals().strong_text_color() } else { ui.visuals().text_color() };
-                    let galley = ui.painter().layout_no_wrap(title, egui::FontId::proportional(12.5), text_color);
-                    let width = 8.0 + 10.0 + 4.0 + galley.size().x + 8.0 + 16.0 + 6.0;
-                    let (rect, resp) = ui.allocate_exact_size(egui::vec2(width, 22.0), Sense::click_and_drag());
-                    tab_rects.push(rect);
-                    if resp.dragged() {
-                        drag_tab = Some(pos);
-                    }
-                    if resp.drag_stopped() {
-                        drop_tab = Some(pos);
-                    }
-                    let fill = if selected { Color32::from_gray(0x3d) } else { Color32::from_gray(0x2e) };
-                    ui.painter().rect_filled(rect, 0.0, fill);
-                    if selected {
-                        let top = if focused { Color32::from_rgb(0x00, 0x78, 0xd4) } else { Color32::from_gray(0x70) };
-                        ui.painter().rect_filled(egui::Rect::from_min_size(rect.min, egui::vec2(rect.width(), 3.0)), 0.0, top);
-                    }
-                    {
-                        // a bold check mark (a cross when disconnected), drawn as lines so it stays heavy at any size
-                        let c = Pos2::new(rect.min.x + 13.0, rect.center().y);
-                        let st = egui::Stroke::new(2.2, dot);
-                        if glyph == "\u{2714}" {
-                            ui.painter().line_segment([Pos2::new(c.x - 5.0, c.y + 0.5), Pos2::new(c.x - 1.5, c.y + 4.0)], st);
-                            ui.painter().line_segment([Pos2::new(c.x - 1.5, c.y + 4.0), Pos2::new(c.x + 5.0, c.y - 4.0)], st);
+        egui::ScrollArea::horizontal()
+            .id_salt(("tabs", group.unwrap_or(0)))
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 1.0;
+                    for (pos, &i) in members.iter().enumerate() {
+                        let s = &self.sessions[i];
+                        let (glyph, dot) = match s.status {
+                            Status::Connected => ("\u{2714}", Color32::from_rgb(0x1f, 0xc8, 0x1f)),
+                            Status::Connecting => ("\u{2714}", Color32::from_rgb(0xe0, 0xa0, 0x00)),
+                            Status::Disconnected(_) => {
+                                ("\u{2716}", Color32::from_rgb(0xe0, 0x3c, 0x3c))
+                            }
+                        };
+                        // in a tab group the shown tab is drawn selected; the blue frame marks the active session
+                        let selected = match shown {
+                            Some(id) => s.id == id,
+                            None => i == self.active,
+                        };
+                        let focused = i == self.active;
+                        let title = if s.title.chars().count() > 30 {
+                            format!("{}…", s.title.chars().take(29).collect::<String>())
                         } else {
-                            ui.painter().line_segment([Pos2::new(c.x - 4.0, c.y - 4.0), Pos2::new(c.x + 4.0, c.y + 4.0)], st);
-                            ui.painter().line_segment([Pos2::new(c.x - 4.0, c.y + 4.0), Pos2::new(c.x + 4.0, c.y - 4.0)], st);
+                            s.title.clone()
+                        };
+                        let text_color = if selected {
+                            ui.visuals().strong_text_color()
+                        } else {
+                            ui.visuals().text_color()
+                        };
+                        let galley = ui.painter().layout_no_wrap(
+                            title,
+                            egui::FontId::proportional(12.5),
+                            text_color,
+                        );
+                        let width = 8.0 + 10.0 + 4.0 + galley.size().x + 8.0 + 16.0 + 6.0;
+                        let (rect, resp) = ui
+                            .allocate_exact_size(egui::vec2(width, 22.0), Sense::click_and_drag());
+                        tab_rects.push(rect);
+                        if resp.dragged() {
+                            drag_tab = Some(pos);
                         }
-                    }
-                    if s.cfg.tab_color_on {
-                        let tc = s.cfg.tab_color;
-                        ui.painter().rect_filled(egui::Rect::from_min_size(rect.min, egui::vec2(rect.width(), 3.0)), 0.0, Color32::from_rgb(tc[0], tc[1], tc[2]));
-                    }
-                    ui.painter().galley(Pos2::new(rect.min.x + 22.0, rect.center().y - galley.size().y / 2.0), galley, text_color);
-                    // The close button sits on top of the tab and takes its own clicks.
-                    // like the original, only the selected tab (or the one under the pointer) shows its close button
-                    let show_x = selected || ui.rect_contains_pointer(rect);
-                    let x_rect = egui::Rect::from_center_size(Pos2::new(rect.max.x - 14.0, rect.center().y), egui::vec2(16.0, 16.0));
-                    let x_resp = if show_x { Some(ui.interact(x_rect, egui::Id::new(("tab_close", self.sessions[i].id)), Sense::click()).on_hover_text("Close tab")) } else { None };
-                    if let Some(x_resp) = &x_resp {
-                        if x_resp.hovered() {
-                            ui.painter().rect_filled(x_rect, 2.0, Color32::from_rgb(0xc4, 0x2b, 0x1c));
+                        if resp.drag_stopped() {
+                            drop_tab = Some(pos);
                         }
-                        let xc = if x_resp.hovered() { Color32::WHITE } else { ui.visuals().text_color() };
-                        let c = x_rect.center();
-                        let d = 3.5;
-                        ui.painter().line_segment([Pos2::new(c.x - d, c.y - d), Pos2::new(c.x + d, c.y + d)], egui::Stroke::new(1.3, xc));
-                        ui.painter().line_segment([Pos2::new(c.x - d, c.y + d), Pos2::new(c.x + d, c.y - d)], egui::Stroke::new(1.3, xc));
-                    }
-                    if x_resp.as_ref().map(|r| r.clicked()).unwrap_or(false) {
-                        act = Some((i, TabAct::Close));
-                    } else if resp.clicked() {
-                        select = Some(i);
-                    }
-                    if resp.middle_clicked() {
-                        act = Some((i, TabAct::Close));
-                    }
-                    let connected = self.sessions[i].is_connected();
-                    let is_ssh = self.sessions[i].cfg.protocol.is_ssh();
-                    let many = self.sessions.len() > 1;
-                    let many_here = members.len() > 1;
-                    let last = pos + 1 >= members.len();
-                    let locked = self.sessions[i].locked.is_some();
-                    let renamed = self.sessions[i].renamed;
-                    // the original's tab menu, in its order (SecureCRT 9, right-click on a tab)
-                    resp.context_menu(|ui| {
-                        ui.set_min_width(230.0);
-                        if mi(ui, "Rename", "", true) {
-                            act = Some((i, TabAct::Rename));
+                        let fill = if selected {
+                            Color32::from_gray(0x3d)
+                        } else {
+                            Color32::from_gray(0x2e)
+                        };
+                        ui.painter().rect_filled(rect, 0.0, fill);
+                        if selected {
+                            let top = if focused {
+                                Color32::from_rgb(0x00, 0x78, 0xd4)
+                            } else {
+                                Color32::from_gray(0x70)
+                            };
+                            ui.painter().rect_filled(
+                                egui::Rect::from_min_size(rect.min, egui::vec2(rect.width(), 3.0)),
+                                0.0,
+                                top,
+                            );
                         }
-                        if mi(ui, "Reset Name", "", renamed) {
-                            act = Some((i, TabAct::ResetName));
+                        {
+                            // a bold check mark (a cross when disconnected), drawn as lines so it stays heavy at any size
+                            let c = Pos2::new(rect.min.x + 13.0, rect.center().y);
+                            let st = egui::Stroke::new(2.2, dot);
+                            if glyph == "\u{2714}" {
+                                ui.painter().line_segment(
+                                    [
+                                        Pos2::new(c.x - 5.0, c.y + 0.5),
+                                        Pos2::new(c.x - 1.5, c.y + 4.0),
+                                    ],
+                                    st,
+                                );
+                                ui.painter().line_segment(
+                                    [
+                                        Pos2::new(c.x - 1.5, c.y + 4.0),
+                                        Pos2::new(c.x + 5.0, c.y - 4.0),
+                                    ],
+                                    st,
+                                );
+                            } else {
+                                ui.painter().line_segment(
+                                    [
+                                        Pos2::new(c.x - 4.0, c.y - 4.0),
+                                        Pos2::new(c.x + 4.0, c.y + 4.0),
+                                    ],
+                                    st,
+                                );
+                                ui.painter().line_segment(
+                                    [
+                                        Pos2::new(c.x - 4.0, c.y + 4.0),
+                                        Pos2::new(c.x + 4.0, c.y - 4.0),
+                                    ],
+                                    st,
+                                );
+                            }
                         }
-                        if mi_plain(ui, "Reconnect", !connected) {
-                            act = Some((i, TabAct::Reconnect));
+                        if s.cfg.tab_color_on {
+                            let tc = s.cfg.tab_color;
+                            ui.painter().rect_filled(
+                                egui::Rect::from_min_size(rect.min, egui::vec2(rect.width(), 3.0)),
+                                0.0,
+                                Color32::from_rgb(tc[0], tc[1], tc[2]),
+                            );
                         }
-                        if mi_plain(ui, "Disconnect", connected) {
-                            act = Some((i, TabAct::Disconnect));
+                        ui.painter().galley(
+                            Pos2::new(rect.min.x + 22.0, rect.center().y - galley.size().y / 2.0),
+                            galley,
+                            text_color,
+                        );
+                        // The close button sits on top of the tab and takes its own clicks.
+                        // like the original, only the selected tab (or the one under the pointer) shows its close button
+                        let show_x = selected || ui.rect_contains_pointer(rect);
+                        let x_rect = egui::Rect::from_center_size(
+                            Pos2::new(rect.max.x - 14.0, rect.center().y),
+                            egui::vec2(16.0, 16.0),
+                        );
+                        let x_resp = if show_x {
+                            Some(
+                                ui.interact(
+                                    x_rect,
+                                    egui::Id::new(("tab_close", self.sessions[i].id)),
+                                    Sense::click(),
+                                )
+                                .on_hover_text("Close tab"),
+                            )
+                        } else {
+                            None
+                        };
+                        if let Some(x_resp) = &x_resp {
+                            if x_resp.hovered() {
+                                ui.painter().rect_filled(
+                                    x_rect,
+                                    2.0,
+                                    Color32::from_rgb(0xc4, 0x2b, 0x1c),
+                                );
+                            }
+                            let xc = if x_resp.hovered() {
+                                Color32::WHITE
+                            } else {
+                                ui.visuals().text_color()
+                            };
+                            let c = x_rect.center();
+                            let d = 3.5;
+                            ui.painter().line_segment(
+                                [Pos2::new(c.x - d, c.y - d), Pos2::new(c.x + d, c.y + d)],
+                                egui::Stroke::new(1.3, xc),
+                            );
+                            ui.painter().line_segment(
+                                [Pos2::new(c.x - d, c.y + d), Pos2::new(c.x + d, c.y - d)],
+                                egui::Stroke::new(1.3, xc),
+                            );
                         }
-                        ui.separator();
-                        if mi(ui, "Close", "Ctrl+F4", true) {
+                        if x_resp.as_ref().map(|r| r.clicked()).unwrap_or(false) {
+                            act = Some((i, TabAct::Close));
+                        } else if resp.clicked() {
+                            select = Some(i);
+                        }
+                        if resp.middle_clicked() {
                             act = Some((i, TabAct::Close));
                         }
-                        if mi(ui, "Close Disconnected Tabs", "", true) {
-                            act = Some((i, TabAct::CloseDisconnected));
-                        }
-                        if mi(ui, "Close Other Tabs", "", many_here) {
-                            act = Some((i, TabAct::CloseOthers));
-                        }
-                        if mi(ui, "Close Tabs to the Right", "", !last) {
-                            act = Some((i, TabAct::CloseRight));
-                        }
-                        if mi(ui, "Close Tab Group", "", true) {
-                            act = Some((i, TabAct::CloseGroup));
-                        }
-                        if mi(ui, "Close All Tabs", "", true) {
-                            act = Some((i, TabAct::CloseAll));
-                        }
-                        ui.separator();
-                        if mi(ui, if locked { "Unlock Session" } else { "Lock..." }, "", true) {
-                            act = Some((i, TabAct::Lock));
-                        }
-                        ui.separator();
-                        if mi(ui, "Clone Session", "", true) {
-                            act = Some((i, TabAct::Clone));
-                        }
-                        if mi(ui, "Clone in New Window", "", true) {
-                            act = Some((i, TabAct::CloneWindow));
-                        }
-                        if mi(ui, "Send to New Window", "", many) {
-                            act = Some((i, TabAct::SendWindow));
-                        }
-                        if mi(ui, "Send to New Tab Group", "", many_here) {
-                            act = Some((i, TabAct::SendGroup));
-                        }
-                        if mi(ui, "Connect SFTP Session", "", is_ssh && connected) {
-                            act = Some((i, TabAct::Sftp));
-                        }
-                        // SecureFX is a separate VanDyke product; the original greys this out when it is not installed
-                        mi(ui, "Open SecureFX", "", false);
-                        ui.separator();
-                        if mi_plain(ui, "Session Options...", true) {
-                            act = Some((i, TabAct::Properties));
-                        }
-                        if mi(ui, "Font...", "", true) {
-                            act = Some((i, TabAct::Font));
-                        }
-                        if mi(ui, "Save Session...", "", true) {
-                            act = Some((i, TabAct::SaveSession));
-                        }
-                        if mi(ui, "Send Commands to This Group", "", true) {
-                            act = Some((i, TabAct::CommandsToGroup));
-                        }
-                    });
-                }
+                        let connected = self.sessions[i].is_connected();
+                        let is_ssh = self.sessions[i].cfg.protocol.is_ssh();
+                        let many = self.sessions.len() > 1;
+                        let many_here = members.len() > 1;
+                        let last = pos + 1 >= members.len();
+                        let locked = self.sessions[i].locked.is_some();
+                        let renamed = self.sessions[i].renamed;
+                        // the original's tab menu, in its order (SecureCRT 9, right-click on a tab)
+                        resp.context_menu(|ui| {
+                            ui.set_min_width(230.0);
+                            if mi(ui, "Rename", "", true) {
+                                act = Some((i, TabAct::Rename));
+                            }
+                            if mi(ui, "Reset Name", "", renamed) {
+                                act = Some((i, TabAct::ResetName));
+                            }
+                            if mi_plain(ui, "Reconnect", !connected) {
+                                act = Some((i, TabAct::Reconnect));
+                            }
+                            if mi_plain(ui, "Disconnect", connected) {
+                                act = Some((i, TabAct::Disconnect));
+                            }
+                            ui.separator();
+                            if mi(ui, "Close", "Ctrl+F4", true) {
+                                act = Some((i, TabAct::Close));
+                            }
+                            if mi(ui, "Close Disconnected Tabs", "", true) {
+                                act = Some((i, TabAct::CloseDisconnected));
+                            }
+                            if mi(ui, "Close Other Tabs", "", many_here) {
+                                act = Some((i, TabAct::CloseOthers));
+                            }
+                            if mi(ui, "Close Tabs to the Right", "", !last) {
+                                act = Some((i, TabAct::CloseRight));
+                            }
+                            if mi(ui, "Close Tab Group", "", true) {
+                                act = Some((i, TabAct::CloseGroup));
+                            }
+                            if mi(ui, "Close All Tabs", "", true) {
+                                act = Some((i, TabAct::CloseAll));
+                            }
+                            ui.separator();
+                            if mi(
+                                ui,
+                                if locked { "Unlock Session" } else { "Lock..." },
+                                "",
+                                true,
+                            ) {
+                                act = Some((i, TabAct::Lock));
+                            }
+                            ui.separator();
+                            if mi(ui, "Clone Session", "", true) {
+                                act = Some((i, TabAct::Clone));
+                            }
+                            if mi(ui, "Clone in New Window", "", true) {
+                                act = Some((i, TabAct::CloneWindow));
+                            }
+                            if mi(ui, "Send to New Window", "", many) {
+                                act = Some((i, TabAct::SendWindow));
+                            }
+                            if mi(ui, "Send to New Tab Group", "", many_here) {
+                                act = Some((i, TabAct::SendGroup));
+                            }
+                            if mi(ui, "Connect SFTP Session", "", is_ssh && connected) {
+                                act = Some((i, TabAct::Sftp));
+                            }
+                            // SecureFX is a separate VanDyke product; the original greys this out when it is not installed
+                            mi(ui, "Open SecureFX", "", false);
+                            ui.separator();
+                            if mi_plain(ui, "Session Options...", true) {
+                                act = Some((i, TabAct::Properties));
+                            }
+                            if mi(ui, "Font...", "", true) {
+                                act = Some((i, TabAct::Font));
+                            }
+                            if mi(ui, "Save Session...", "", true) {
+                                act = Some((i, TabAct::SaveSession));
+                            }
+                            if mi(ui, "Send Commands to This Group", "", true) {
+                                act = Some((i, TabAct::CommandsToGroup));
+                            }
+                        });
+                    }
+                });
             });
-        });
         // the blue line under the tab bar
         let bar = ui.max_rect();
-        ui.painter().hline(bar.x_range(), bar.bottom() - 0.5, egui::Stroke::new(1.0, Color32::from_rgb(0x00, 0x78, 0xd4)));
+        ui.painter().hline(
+            bar.x_range(),
+            bar.bottom() - 0.5,
+            egui::Stroke::new(1.0, Color32::from_rgb(0x00, 0x78, 0xd4)),
+        );
         // Dragging a tab: a blue marker shows where it will land; releasing moves it there.
         let pointer = ui.ctx().input(|i| i.pointer.latest_pos());
         let slot_for = |p: Pos2| -> usize {
@@ -3900,8 +5038,16 @@ impl YettyApp {
         if let (Some(from), Some(p)) = (drag_tab, pointer) {
             let slot = slot_for(p);
             if let Some(r) = tab_rects.get(slot).or(tab_rects.last()) {
-                let x = if slot >= tab_rects.len() { r.max.x } else { r.min.x };
-                ui.painter().vline(x, r.y_range(), egui::Stroke::new(2.0, Color32::from_rgb(0x00, 0x78, 0xd4)));
+                let x = if slot >= tab_rects.len() {
+                    r.max.x
+                } else {
+                    r.min.x
+                };
+                ui.painter().vline(
+                    x,
+                    r.y_range(),
+                    egui::Stroke::new(2.0, Color32::from_rgb(0x00, 0x78, 0xd4)),
+                );
             }
             ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
             let _ = from;
@@ -3922,7 +5068,10 @@ impl YettyApp {
                 for (place, &src) in members.iter().zip(order.iter()) {
                     perm[*place] = src;
                 }
-                let mut old: Vec<Option<Session>> = std::mem::take(&mut self.sessions).into_iter().map(Some).collect();
+                let mut old: Vec<Option<Session>> = std::mem::take(&mut self.sessions)
+                    .into_iter()
+                    .map(Some)
+                    .collect();
                 self.sessions = perm.iter().filter_map(|&k| old[k].take()).collect();
                 self.active = active_id.and_then(|id| self.index_of(id)).unwrap_or(0);
                 self.focus_terminal = true;
@@ -3937,7 +5086,10 @@ impl YettyApp {
                 TabAct::Close => self.request_close(i),
                 TabAct::CloseOthers => {
                     let id = self.sessions[i].id;
-                    let n = members.iter().filter(|&&k| k != i && self.sessions[k].is_connected()).count();
+                    let n = members
+                        .iter()
+                        .filter(|&&k| k != i && self.sessions[k].is_connected())
+                        .count();
                     if n > 0 {
                         self.ask("Some of the other sessions are connected.\nAre you sure you want to disconnect and close them?", ConfirmAct::CloseOthers(id));
                     } else {
@@ -3946,7 +5098,10 @@ impl YettyApp {
                 }
                 TabAct::CloseRight => {
                     let id = self.sessions[i].id;
-                    let n = members.iter().filter(|&&k| k > i && self.sessions[k].is_connected()).count();
+                    let n = members
+                        .iter()
+                        .filter(|&&k| k > i && self.sessions[k].is_connected())
+                        .count();
                     if n > 0 {
                         self.ask("Some of the sessions to the right are connected.\nAre you sure you want to disconnect and close them?", ConfirmAct::CloseRight(id));
                     } else {
@@ -3972,7 +5127,12 @@ impl YettyApp {
                 }
                 TabAct::SaveSession => {
                     let name = self.sessions[i].cfg.display_name();
-                    self.prompt(Prompt::SaveSession(self.sessions[i].id), "Save Session", "Session name:", name);
+                    self.prompt(
+                        Prompt::SaveSession(self.sessions[i].id),
+                        "Save Session",
+                        "Session name:",
+                        name,
+                    );
                 }
                 TabAct::CommandsToGroup => {
                     self.cmd_target = 3;
@@ -3999,7 +5159,12 @@ impl YettyApp {
                     if self.sessions[i].locked.is_some() {
                         self.sessions[i].locked = None;
                     } else {
-                        self.prompt(Prompt::LockPassword, "Lock Session", "Password to unlock:", String::new());
+                        self.prompt(
+                            Prompt::LockPassword,
+                            "Lock Session",
+                            "Password to unlock:",
+                            String::new(),
+                        );
                     }
                 }
                 TabAct::Reconnect => self.sessions[i].connect(),
@@ -4025,8 +5190,13 @@ impl YettyApp {
                 }
                 TabAct::CloseDisconnected => {
                     let active_id = self.sessions.get(self.active).map(|x| x.id);
-                    self.sessions.retain(|s| s.is_connected() || matches!(s.status, Status::Connecting));
-                    self.active = self.sessions.iter().position(|x| Some(x.id) == active_id).unwrap_or(0);
+                    self.sessions
+                        .retain(|s| s.is_connected() || matches!(s.status, Status::Connecting));
+                    self.active = self
+                        .sessions
+                        .iter()
+                        .position(|x| Some(x.id) == active_id)
+                        .unwrap_or(0);
                 }
                 TabAct::Properties => {
                     self.active = i;
@@ -4038,7 +5208,11 @@ impl YettyApp {
 
     /// The buttons of the bar the active session shows (its "Button bar" option; the default bar otherwise).
     fn bar_mut(&mut self) -> &mut Vec<ButtonDef> {
-        let name = self.sessions.get(self.active).map(|s| s.cfg.button_bar.clone()).unwrap_or_default();
+        let name = self
+            .sessions
+            .get(self.active)
+            .map(|s| s.cfg.button_bar.clone())
+            .unwrap_or_default();
         match self.settings.button_bars.iter().position(|b| b.0 == name) {
             Some(i) if !name.is_empty() => &mut self.settings.button_bars[i].1,
             _ => &mut self.settings.buttons,
@@ -4052,11 +5226,17 @@ impl YettyApp {
         let mut add = false;
         let mut new_bar = false;
         let mut del_bar = false;
-        let bar_name = self.sessions.get(self.active).map(|s| s.cfg.button_bar.clone()).unwrap_or_default();
+        let bar_name = self
+            .sessions
+            .get(self.active)
+            .map(|s| s.cfg.button_bar.clone())
+            .unwrap_or_default();
         let buttons = self.bar_mut().clone();
         ui.horizontal_wrapped(|ui| {
             for (i, b) in buttons.iter().enumerate() {
-                let r = ui.button(&b.label).on_hover_text(format!("Sends: {}", b.text));
+                let r = ui
+                    .button(&b.label)
+                    .on_hover_text(format!("Sends: {}", b.text));
                 if r.clicked() {
                     send = Some(config::unescape(&b.text));
                 }
@@ -4078,14 +5258,25 @@ impl YettyApp {
                     new_bar = true;
                     ui.close();
                 }
-                if ui.add_enabled(!bar_name.is_empty(), egui::Button::new("Delete This Button Bar")).clicked() {
+                if ui
+                    .add_enabled(
+                        !bar_name.is_empty(),
+                        egui::Button::new("Delete This Button Bar"),
+                    )
+                    .clicked()
+                {
                     del_bar = true;
                     ui.close();
                 }
             });
         });
         if new_bar {
-            self.prompt(Prompt::NewButtonBar, "New Button Bar", "Name of the button bar:", String::new());
+            self.prompt(
+                Prompt::NewButtonBar,
+                "New Button Bar",
+                "Name of the button bar:",
+                String::new(),
+            );
         }
         if del_bar {
             self.settings.button_bars.retain(|b| b.0 != bar_name);
@@ -4097,14 +5288,23 @@ impl YettyApp {
             self.dirty = true;
         }
         if add {
-            self.button_editor = Some(ButtonEditor { index: None, def: ButtonDef { label: "New".into(), text: "\\r".into() } });
+            self.button_editor = Some(ButtonEditor {
+                index: None,
+                def: ButtonDef {
+                    label: "New".into(),
+                    text: "\\r".into(),
+                },
+            });
         }
         if let Some(t) = send {
             self.send_to_targets(&t);
             self.focus_terminal = true;
         }
         if let Some(i) = edit {
-            self.button_editor = Some(ButtonEditor { index: Some(i), def: buttons[i].clone() });
+            self.button_editor = Some(ButtonEditor {
+                index: Some(i),
+                def: buttons[i].clone(),
+            });
         }
         if let Some(i) = remove {
             self.bar_mut().remove(i);
@@ -4117,10 +5317,23 @@ impl YettyApp {
         let focus_blue = Color32::from_rgb(0x00, 0x78, 0xd4);
         let full = ui.max_rect();
         // the line on top is blue only while the box has the keyboard focus, grey otherwise (as in the original)
-        let box_focus = ui.ctx().memory(|m| m.has_focus(egui::Id::new("command_line")));
-        ui.painter().rect_filled(egui::Rect::from_min_max(Pos2::new(full.min.x - 6.0, full.min.y), Pos2::new(full.max.x + 2.0, full.min.y + 5.0)), 0.0, Color32::from_gray(0x3d));
+        let box_focus = ui
+            .ctx()
+            .memory(|m| m.has_focus(egui::Id::new("command_line")));
+        ui.painter().rect_filled(
+            egui::Rect::from_min_max(
+                Pos2::new(full.min.x - 6.0, full.min.y),
+                Pos2::new(full.max.x + 2.0, full.min.y + 5.0),
+            ),
+            0.0,
+            Color32::from_gray(0x3d),
+        );
         if box_focus {
-            ui.painter().hline(full.x_range(), full.min.y + 1.0, egui::Stroke::new(2.0, focus_blue));
+            ui.painter().hline(
+                full.x_range(),
+                full.min.y + 1.0,
+                egui::Stroke::new(2.0, focus_blue),
+            );
         }
         ui.add_space(5.0);
         if self.settings.cmd_title_bar {
@@ -4137,10 +5350,17 @@ impl YettyApp {
                 let (r, _) = ui.allocate_exact_size(egui::vec2(w, 12.0), Sense::hover());
                 let mut x = r.min.x + 4.0;
                 while x < r.max.x {
-                    ui.painter().circle_filled(Pos2::new(x, r.center().y), 0.5, Color32::from_gray(110));
+                    ui.painter().circle_filled(
+                        Pos2::new(x, r.center().y),
+                        0.5,
+                        Color32::from_gray(110),
+                    );
                     x += 3.0;
                 }
-                if ui.add(egui::Button::new(RichText::new("✖").size(10.0)).frame(false)).clicked() {
+                if ui
+                    .add(egui::Button::new(RichText::new("✖").size(10.0)).frame(false))
+                    .clicked()
+                {
                     self.settings.show_command_window = false;
                 }
             });
@@ -4148,35 +5368,52 @@ impl YettyApp {
         let id = egui::Id::new("command_line");
         let has_focus = ctx.memory(|m| m.has_focus(id));
         // Enter sends the line (Ctrl+Enter instead with "Swap ENTER and CTRL+ENTER in Command window")
-        let send_mods = if self.settings.global.swap_enter { egui::Modifiers::CTRL } else { egui::Modifiers::NONE };
+        let send_mods = if self.settings.global.swap_enter {
+            egui::Modifiers::CTRL
+        } else {
+            egui::Modifiers::NONE
+        };
         let enter = has_focus && ctx.input_mut(|i| i.consume_key(send_mods, egui::Key::Enter));
         let mut menu_act: Option<&'static str> = None;
         let before = self.command_line.clone();
-        let rect_resp = egui::Frame::new().fill(Color32::from_gray(0x38)).stroke(egui::Stroke::new(1.0, Color32::from_gray(0x9a))).show(ui, |ui| {
-            egui::ScrollArea::vertical().id_salt("cmd_scroll").max_height(84.0).auto_shrink([false, false]).show(ui, |ui| {
-                ui.add(
-                    egui::TextEdit::multiline(&mut self.command_line)
-                        .id(id)
-                        .font(egui::TextStyle::Monospace)
-                        .frame(egui::Frame::NONE)
-                        .desired_rows(5)
-                        .desired_width(f32::INFINITY),
-                )
-            })
-        });
+        let rect_resp = egui::Frame::new()
+            .fill(Color32::from_gray(0x38))
+            .stroke(egui::Stroke::new(1.0, Color32::from_gray(0x9a)))
+            .show(ui, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("cmd_scroll")
+                    .max_height(84.0)
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        ui.add(
+                            egui::TextEdit::multiline(&mut self.command_line)
+                                .id(id)
+                                .font(egui::TextStyle::Monospace)
+                                .frame(egui::Frame::NONE)
+                                .desired_rows(5)
+                                .desired_width(f32::INFINITY),
+                        )
+                    })
+            });
         let r = rect_resp.inner.inner;
         let has_sel = {
             let st = egui::TextEdit::load_state(&ctx, id);
-            st.and_then(|s| s.cursor.char_range()).map(|c| c.primary.index.0 != c.secondary.index.0).unwrap_or(false)
+            st.and_then(|s| s.cursor.char_range())
+                .map(|c| c.primary.index.0 != c.secondary.index.0)
+                .unwrap_or(false)
         };
         let empty = self.command_line.is_empty();
         let immediate = self.settings.cmd_send_immediately;
         // the box keeps its own undo history; the menu entry follows it
         let undo_now = |text: &str| {
-            let cur = egui::TextEdit::load_state(&ctx, id).and_then(|s| s.cursor.char_range()).unwrap_or_default();
+            let cur = egui::TextEdit::load_state(&ctx, id)
+                .and_then(|s| s.cursor.char_range())
+                .unwrap_or_default();
             (cur, text.to_string())
         };
-        let can_undo = egui::TextEdit::load_state(&ctx, id).map(|s| s.undoer().has_undo(&undo_now(&self.command_line))).unwrap_or(false);
+        let can_undo = egui::TextEdit::load_state(&ctx, id)
+            .map(|s| s.undoer().has_undo(&undo_now(&self.command_line)))
+            .unwrap_or(false);
         r.context_menu(|ui| {
             ui.set_min_width(330.0);
             if mi(ui, "Undo", "Ctrl+Z", can_undo) {
@@ -4200,25 +5437,65 @@ impl YettyApp {
                 menu_act = Some("all");
             }
             ui.separator();
-            if mi(ui, &format!("{}Send Characters Immediately", if immediate { "✓ " } else { "   " }), "Ctrl+Shift+I", true) {
+            if mi(
+                ui,
+                &format!(
+                    "{}Send Characters Immediately",
+                    if immediate { "✓ " } else { "   " }
+                ),
+                "Ctrl+Shift+I",
+                true,
+            ) {
                 menu_act = Some("immediate");
             }
-            if mi(ui, &format!("{}Show Command Window Title Bar", if self.settings.cmd_title_bar { "✓ " } else { "   " }), "Ctrl+Shift+W", true) {
+            if mi(
+                ui,
+                &format!(
+                    "{}Show Command Window Title Bar",
+                    if self.settings.cmd_title_bar {
+                        "✓ "
+                    } else {
+                        "   "
+                    }
+                ),
+                "Ctrl+Shift+W",
+                true,
+            ) {
                 menu_act = Some("titlebar");
             }
             sub_menu(ui, "Send Commands to", |ui| {
                 ui.set_min_width(260.0);
                 let t = self.cmd_target;
-                if mi(ui, &format!("{}Active Session", if t == 0 { "✓ " } else { "   " }), "Ctrl+Shift+T", true) {
+                if mi(
+                    ui,
+                    &format!("{}Active Session", if t == 0 { "✓ " } else { "   " }),
+                    "Ctrl+Shift+T",
+                    true,
+                ) {
                     menu_act = Some("t_active");
                 }
-                if mi(ui, &format!("{}All Sessions", if t == 1 { "✓ " } else { "   " }), "Ctrl+Shift+S", true) {
+                if mi(
+                    ui,
+                    &format!("{}All Sessions", if t == 1 { "✓ " } else { "   " }),
+                    "Ctrl+Shift+S",
+                    true,
+                ) {
                     menu_act = Some("t_all");
                 }
-                if mi(ui, &format!("{}Selected Tab Group(s)", if t == 3 { "✓ " } else { "   " }), "Ctrl+Shift+G", self.n_groups > 1) {
+                if mi(
+                    ui,
+                    &format!("{}Selected Tab Group(s)", if t == 3 { "✓ " } else { "   " }),
+                    "Ctrl+Shift+G",
+                    self.n_groups > 1,
+                ) {
                     menu_act = Some("t_group");
                 }
-                if mi(ui, &format!("{}Visible Sessions", if t == 2 { "✓ " } else { "   " }), "Ctrl+Shift+B", true) {
+                if mi(
+                    ui,
+                    &format!("{}Visible Sessions", if t == 2 { "✓ " } else { "   " }),
+                    "Ctrl+Shift+B",
+                    true,
+                ) {
                     menu_act = Some("t_visible");
                 }
             });
@@ -4239,12 +5516,17 @@ impl YettyApp {
             Some("copy") | Some("cut") | Some("delete") => {
                 if let Some((a, b)) = sel_range() {
                     let chars: Vec<char> = self.command_line.chars().collect();
-                    let piece: String = chars[a.min(chars.len())..b.min(chars.len())].iter().collect();
+                    let piece: String = chars[a.min(chars.len())..b.min(chars.len())]
+                        .iter()
+                        .collect();
                     if menu_act != Some("delete") {
                         ctx.copy_text(piece);
                     }
                     if menu_act != Some("copy") {
-                        let rest: String = chars[..a.min(chars.len())].iter().chain(chars[b.min(chars.len())..].iter()).collect();
+                        let rest: String = chars[..a.min(chars.len())]
+                            .iter()
+                            .chain(chars[b.min(chars.len())..].iter())
+                            .collect();
                         self.command_line = rest;
                     }
                 }
@@ -4268,11 +5550,16 @@ impl YettyApp {
             Some("all") => {
                 let n = self.command_line.chars().count();
                 let mut st = egui::TextEdit::load_state(&ctx, id).unwrap_or_default();
-                st.cursor.set_char_range(Some(egui::text::CCursorRange::two(egui::text::CCursor::new(0), egui::text::CCursor::new(n))));
+                st.cursor.set_char_range(Some(egui::text::CCursorRange::two(
+                    egui::text::CCursor::new(0),
+                    egui::text::CCursor::new(n),
+                )));
                 st.store(&ctx, id);
                 ctx.memory_mut(|m| m.request_focus(id));
             }
-            Some("immediate") => self.settings.cmd_send_immediately = !self.settings.cmd_send_immediately,
+            Some("immediate") => {
+                self.settings.cmd_send_immediately = !self.settings.cmd_send_immediately
+            }
             Some("titlebar") => self.settings.cmd_title_bar = !self.settings.cmd_title_bar,
             Some("t_active") => self.cmd_target = 0,
             Some("t_all") => self.cmd_target = 1,
@@ -4307,14 +5594,31 @@ impl YettyApp {
 
     fn hex_view(&mut self, ui: &mut egui::Ui) {
         ui.label(RichText::new("Hex View").strong());
-        let bytes: Vec<u8> = self.sessions.get(self.active).map(|s| s.hex.iter().rev().take(512).rev().copied().collect()).unwrap_or_default();
-        egui::ScrollArea::vertical().stick_to_bottom(true).max_height(120.0).auto_shrink([false, false]).show(ui, |ui| {
-            for (n, chunk) in bytes.chunks(16).enumerate() {
-                let hex: Vec<String> = chunk.iter().map(|b| format!("{b:02X}")).collect();
-                let asc: String = chunk.iter().map(|&b| if (32..127).contains(&b) { b as char } else { '.' }).collect();
-                ui.monospace(format!("{:04X}  {:<47}  {}", n * 16, hex.join(" "), asc));
-            }
-        });
+        let bytes: Vec<u8> = self
+            .sessions
+            .get(self.active)
+            .map(|s| s.hex.iter().rev().take(512).rev().copied().collect())
+            .unwrap_or_default();
+        egui::ScrollArea::vertical()
+            .stick_to_bottom(true)
+            .max_height(120.0)
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                for (n, chunk) in bytes.chunks(16).enumerate() {
+                    let hex: Vec<String> = chunk.iter().map(|b| format!("{b:02X}")).collect();
+                    let asc: String = chunk
+                        .iter()
+                        .map(|&b| {
+                            if (32..127).contains(&b) {
+                                b as char
+                            } else {
+                                '.'
+                            }
+                        })
+                        .collect();
+                    ui.monospace(format!("{:04X}  {:<47}  {}", n * 16, hex.join(" "), asc));
+                }
+            });
     }
 
     /// The tab group bar under the sessions: the group list as a drop-down, like the original's "Default" button.
@@ -4358,10 +5662,18 @@ impl YettyApp {
                 let on = Color32::from_gray(235);
                 let off = Color32::from_gray(95);
                 if g.status_num {
-                    ui.label(RichText::new("NUM").size(12.0).color(if num { on } else { off }));
+                    ui.label(
+                        RichText::new("NUM")
+                            .size(12.0)
+                            .color(if num { on } else { off }),
+                    );
                 }
                 if g.status_caps {
-                    ui.label(RichText::new("CAP").size(12.0).color(if caps { on } else { off }));
+                    ui.label(
+                        RichText::new("CAP")
+                            .size(12.0)
+                            .color(if caps { on } else { off }),
+                    );
                 }
                 if let Some(s) = self.sessions.get(self.active) {
                     for col in g.status_columns.iter().take(5).rev() {
@@ -4379,7 +5691,12 @@ impl YettyApp {
                                     if col == "Elapsed Time" {
                                         format!("{:02}:{:02}", e / 3600, (e / 60) % 60)
                                     } else {
-                                        format!("{:02}:{:02}:{:02}", e / 3600, (e / 60) % 60, e % 60)
+                                        format!(
+                                            "{:02}:{:02}:{:02}",
+                                            e / 3600,
+                                            (e / 60) % 60,
+                                            e % 60
+                                        )
                                     }
                                 }
                                 None => continue,
@@ -4388,7 +5705,9 @@ impl YettyApp {
                                 let n = config::now();
                                 format!("{:02}:{:02}", n.h, n.mi)
                             }
-                            "TFTP Server Status" => (if tftp_on { "TFTP: On" } else { "TFTP: Off" }).to_string(),
+                            "TFTP Server Status" => {
+                                (if tftp_on { "TFTP: On" } else { "TFTP: Off" }).to_string()
+                            }
                             _ => continue,
                         };
                         ui.add_space(14.0);
@@ -4396,8 +5715,19 @@ impl YettyApp {
                     }
                     if let (true, Some(p)) = (g.status_log_name, &s.log_path) {
                         ui.add_space(14.0);
-                        let name = std::path::Path::new(p).file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
-                        ui.label(RichText::new(if s.log_paused { "Logging paused".to_string() } else { format!("Logging: {name}") }).size(12.0)).on_hover_text(p);
+                        let name = std::path::Path::new(p)
+                            .file_name()
+                            .map(|f| f.to_string_lossy().into_owned())
+                            .unwrap_or_default();
+                        ui.label(
+                            RichText::new(if s.log_paused {
+                                "Logging paused".to_string()
+                            } else {
+                                format!("Logging: {name}")
+                            })
+                            .size(12.0),
+                        )
+                        .on_hover_text(p);
                     }
                 }
             });
@@ -4420,19 +5750,41 @@ impl YettyApp {
             Layout::TileV => (0..n)
                 .map(|i| {
                     let w = full.width() / n as f32;
-                    (i, egui::Rect::from_min_size(Pos2::new(full.min.x + w * i as f32, full.min.y), egui::vec2(w - 2.0, full.height())))
+                    (
+                        i,
+                        egui::Rect::from_min_size(
+                            Pos2::new(full.min.x + w * i as f32, full.min.y),
+                            egui::vec2(w - 2.0, full.height()),
+                        ),
+                    )
                 })
                 .collect(),
             Layout::Cascade => {
                 let step = 26.0;
                 let w = (full.width() - step * (n as f32 - 1.0)).max(300.0);
                 let h = (full.height() - step * (n as f32 - 1.0)).max(200.0);
-                (0..n).map(|i| (i, egui::Rect::from_min_size(full.min + egui::vec2(step * i as f32, step * i as f32), egui::vec2(w, h)))).collect()
+                (0..n)
+                    .map(|i| {
+                        (
+                            i,
+                            egui::Rect::from_min_size(
+                                full.min + egui::vec2(step * i as f32, step * i as f32),
+                                egui::vec2(w, h),
+                            ),
+                        )
+                    })
+                    .collect()
             }
             Layout::TileH => (0..n)
                 .map(|i| {
                     let h = full.height() / n as f32;
-                    (i, egui::Rect::from_min_size(Pos2::new(full.min.x, full.min.y + h * i as f32), egui::vec2(full.width(), h - 2.0)))
+                    (
+                        i,
+                        egui::Rect::from_min_size(
+                            Pos2::new(full.min.x, full.min.y + h * i as f32),
+                            egui::vec2(full.width(), h - 2.0),
+                        ),
+                    )
                 })
                 .collect(),
         };
@@ -4455,7 +5807,10 @@ impl YettyApp {
         let bottom = self.settings.global.tab_bottom;
         let mut panes = Vec::new();
         for g in 0..n {
-            let col = egui::Rect::from_min_size(Pos2::new(full.min.x + (w + gap) * g as f32, full.min.y), egui::vec2(w, full.height()));
+            let col = egui::Rect::from_min_size(
+                Pos2::new(full.min.x + (w + gap) * g as f32, full.min.y),
+                egui::vec2(w, full.height()),
+            );
             let mut term_rect = col;
             if show_tabs {
                 let strip = if bottom {
@@ -4465,7 +5820,11 @@ impl YettyApp {
                     term_rect.min.y += strip_h;
                     egui::Rect::from_min_size(col.min, egui::vec2(col.width(), strip_h))
                 };
-                let mut child = ui.new_child(egui::UiBuilder::new().max_rect(strip.shrink2(egui::vec2(2.0, 0.0))).id_salt(("tab_group", g)));
+                let mut child = ui.new_child(
+                    egui::UiBuilder::new()
+                        .max_rect(strip.shrink2(egui::vec2(2.0, 0.0)))
+                        .id_salt(("tab_group", g)),
+                );
                 child.add_space(3.0);
                 self.tabs(&mut child, Some(g));
             }
@@ -4492,12 +5851,22 @@ impl YettyApp {
             let s = &mut self.sessions[i];
             if s.locked.is_some() {
                 let (_, bg) = config::scheme(&s.cfg.color_scheme);
-                ui.painter().rect_filled(rect, 0.0, Color32::from_rgb(bg[0], bg[1], bg[2]));
+                ui.painter()
+                    .rect_filled(rect, 0.0, Color32::from_rgb(bg[0], bg[1], bg[2]));
                 let mut unlock = false;
-                let mut child = ui.new_child(egui::UiBuilder::new().max_rect(egui::Rect::from_center_size(rect.center(), egui::vec2(260.0, 80.0))));
+                let mut child = ui.new_child(egui::UiBuilder::new().max_rect(
+                    egui::Rect::from_center_size(rect.center(), egui::vec2(260.0, 80.0)),
+                ));
                 child.label(RichText::new("🔒 Session locked").size(15.0));
-                let mut pw = child.data_mut(|d| d.get_temp::<String>(egui::Id::new(("lockpw", s.id))).unwrap_or_default());
-                let r = child.add(egui::TextEdit::singleline(&mut pw).password(true).hint_text("Password"));
+                let mut pw = child.data_mut(|d| {
+                    d.get_temp::<String>(egui::Id::new(("lockpw", s.id)))
+                        .unwrap_or_default()
+                });
+                let r = child.add(
+                    egui::TextEdit::singleline(&mut pw)
+                        .password(true)
+                        .hint_text("Password"),
+                );
                 if r.lost_focus() && child.input(|i| i.key_pressed(egui::Key::Enter)) {
                     unlock = true;
                 }
@@ -4517,14 +5886,26 @@ impl YettyApp {
                 accept_input: !dialog_open,
                 confirm_paste: self.settings.paste_confirm,
                 paste_prompt_lines: g.paste_prompt_lines.max(1),
-                paste_delay: if self.settings.paste_delay_on { Some(self.settings.paste_delay_ms as u64) } else { None },
-                paste_button: if g.paste_on_button { Some(g.paste_button.min(1)) } else { None },
+                paste_delay: if self.settings.paste_delay_on {
+                    Some(self.settings.paste_delay_ms as u64)
+                } else {
+                    None
+                },
+                paste_button: if g.paste_on_button {
+                    Some(g.paste_button.min(1))
+                } else {
+                    None
+                },
                 hide_pointer: g.hide_pointer_on_key,
                 url_ctrl_click: g.url_ctrl_click,
                 triple_click_newline: g.triple_click_newline,
                 quote_chars: &g.quote_chars,
                 quote_between: g.quote_between,
-                browser: if g.browser_registry { "" } else { &g.browser_path },
+                browser: if g.browser_registry {
+                    ""
+                } else {
+                    &g.browser_path
+                },
             };
             let right_pastes = opts.paste_button == Some(1);
             // Tiled / cascaded windows have a title bar with the name, a mark on the active one and a close button.
@@ -4534,7 +5915,15 @@ impl YettyApp {
                 rect.min.y += 18.0;
                 let active = i == active_now;
                 let painter = ui.painter();
-                painter.rect_filled(bar, 0.0, if active { Color32::from_rgb(0x00, 0x63, 0xb1) } else { Color32::from_gray(0x3a) });
+                painter.rect_filled(
+                    bar,
+                    0.0,
+                    if active {
+                        Color32::from_rgb(0x00, 0x63, 0xb1)
+                    } else {
+                        Color32::from_gray(0x3a)
+                    },
+                );
                 // as the original's tiled windows: "name - Connected"
                 let state = match s.status {
                     Status::Connected => "Connected",
@@ -4542,60 +5931,105 @@ impl YettyApp {
                     Status::Disconnected(_) => "Disconnected",
                 };
                 // the name stops before the minimise / maximise / close buttons on a narrow pane
-                let text_clip = egui::Rect::from_min_max(bar.min, Pos2::new(bar.max.x - 58.0, bar.max.y));
-                painter.with_clip_rect(text_clip.intersect(painter.clip_rect())).text(
-                    Pos2::new(bar.min.x + 6.0, bar.center().y),
-                    egui::Align2::LEFT_CENTER,
-                    format!("{} - {state}", s.title),
-                    egui::FontId::proportional(11.5),
-                    Color32::WHITE,
-                );
+                let text_clip =
+                    egui::Rect::from_min_max(bar.min, Pos2::new(bar.max.x - 58.0, bar.max.y));
+                painter
+                    .with_clip_rect(text_clip.intersect(painter.clip_rect()))
+                    .text(
+                        Pos2::new(bar.min.x + 6.0, bar.center().y),
+                        egui::Align2::LEFT_CENTER,
+                        format!("{} - {state}", s.title),
+                        egui::FontId::proportional(11.5),
+                        Color32::WHITE,
+                    );
                 // the bar first: a widget registered later sits on top, so the buttons below get their own clicks
                 let br = ui.interact(bar, egui::Id::new(("pane_bar", s.id)), Sense::click());
                 if br.clicked() && i != active_now {
                     activate = Some(i);
                 }
-                let x_rect = egui::Rect::from_center_size(Pos2::new(bar.max.x - 12.0, bar.center().y), egui::vec2(16.0, 16.0));
+                let x_rect = egui::Rect::from_center_size(
+                    Pos2::new(bar.max.x - 12.0, bar.center().y),
+                    egui::vec2(16.0, 16.0),
+                );
                 let xr = ui.interact(x_rect, egui::Id::new(("pane_close", s.id)), Sense::click());
                 if xr.hovered() {
-                    ui.painter().rect_filled(x_rect, 2.0, Color32::from_rgb(0xc4, 0x2b, 0x1c));
+                    ui.painter()
+                        .rect_filled(x_rect, 2.0, Color32::from_rgb(0xc4, 0x2b, 0x1c));
                 }
-                ui.painter().text(x_rect.center(), egui::Align2::CENTER_CENTER, "✖", egui::FontId::proportional(10.0), Color32::WHITE);
+                ui.painter().text(
+                    x_rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    "✖",
+                    egui::FontId::proportional(10.0),
+                    Color32::WHITE,
+                );
                 if xr.clicked() {
                     close_pane = Some(i);
                 }
                 // minimise (fold to the title bar) and maximise (fill the area) buttons
-                let max_rect = egui::Rect::from_center_size(Pos2::new(bar.max.x - 30.0, bar.center().y), egui::vec2(16.0, 16.0));
-                let min_rect = egui::Rect::from_center_size(Pos2::new(bar.max.x - 48.0, bar.center().y), egui::vec2(16.0, 16.0));
+                let max_rect = egui::Rect::from_center_size(
+                    Pos2::new(bar.max.x - 30.0, bar.center().y),
+                    egui::vec2(16.0, 16.0),
+                );
+                let min_rect = egui::Rect::from_center_size(
+                    Pos2::new(bar.max.x - 48.0, bar.center().y),
+                    egui::vec2(16.0, 16.0),
+                );
                 let is_max = self.pane_max == Some(s.id);
                 let is_min = self.pane_min.contains(&s.id);
-                for (r, glyph, id, which) in [(min_rect, if is_min { "▭" } else { "–" }, "pane_min", 0), (max_rect, if is_max { "❐" } else { "□" }, "pane_max", 1)] {
+                for (r, glyph, id, which) in [
+                    (min_rect, if is_min { "▭" } else { "–" }, "pane_min", 0),
+                    (max_rect, if is_max { "❐" } else { "□" }, "pane_max", 1),
+                ] {
                     let br2 = ui.interact(r, egui::Id::new((id, s.id)), Sense::click());
                     if br2.hovered() {
-                        ui.painter().rect_filled(r, 2.0, Color32::from_white_alpha(40));
+                        ui.painter()
+                            .rect_filled(r, 2.0, Color32::from_white_alpha(40));
                     }
-                    ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, glyph, egui::FontId::proportional(11.0), Color32::WHITE);
+                    ui.painter().text(
+                        r.center(),
+                        egui::Align2::CENTER_CENTER,
+                        glyph,
+                        egui::FontId::proportional(11.0),
+                        Color32::WHITE,
+                    );
                     if br2.clicked() {
                         pane_toggle = Some((s.id, which == 1));
                         activate = Some(i); // the pane whose button was pressed becomes the active one
                     }
                 }
             }
-            if self.layout != Layout::Tabs && self.pane_min.contains(&s.id) && self.pane_max != Some(s.id) {
+            if self.layout != Layout::Tabs
+                && self.pane_min.contains(&s.id)
+                && self.pane_max != Some(s.id)
+            {
                 continue; // folded to its title bar
             }
             let resp = term::show(ui, s, &opts, rect);
             if self.layout == Layout::Tabs {
                 // the original frames the session window: a light line with a darker one inside it
                 let p = ui.painter();
-                p.rect_stroke(rect, 0.0, egui::Stroke::new(1.0, Color32::from_gray(0xa0)), egui::StrokeKind::Inside);
-                p.rect_stroke(rect.shrink(1.0), 0.0, egui::Stroke::new(1.0, Color32::from_gray(0x69)), egui::StrokeKind::Inside);
+                p.rect_stroke(
+                    rect,
+                    0.0,
+                    egui::Stroke::new(1.0, Color32::from_gray(0xa0)),
+                    egui::StrokeKind::Inside,
+                );
+                p.rect_stroke(
+                    rect.shrink(1.0),
+                    0.0,
+                    egui::Stroke::new(1.0, Color32::from_gray(0x69)),
+                    egui::StrokeKind::Inside,
+                );
             }
             if i == self.active && self.focus_terminal {
                 resp.request_focus();
                 self.focus_terminal = false;
             }
-            if resp.clicked() || resp.secondary_clicked() || resp.has_focus() && self.layout != Layout::Tabs {
+            if resp.clicked()
+                || resp.secondary_clicked()
+                || resp.has_focus() && self.layout != Layout::Tabs
+            {
                 if i != self.active {
                     activate = Some(i);
                 }
@@ -4604,7 +6038,10 @@ impl YettyApp {
                 }
             }
             let has_sel = self.sessions[i].selection.is_some();
-            let url_sel = self.sessions[i].selected_text().map(|t| t.trim().starts_with("http")).unwrap_or(false);
+            let url_sel = self.sessions[i]
+                .selected_text()
+                .map(|t| t.trim().starts_with("http"))
+                .unwrap_or(false);
             // "Paste on right button" replaces the terminal's context menu
             if right_pastes {
                 continue;
@@ -4661,7 +6098,11 @@ impl YettyApp {
         }
         if let Some((id, is_max)) = pane_toggle {
             if is_max {
-                self.pane_max = if self.pane_max == Some(id) { None } else { Some(id) };
+                self.pane_max = if self.pane_max == Some(id) {
+                    None
+                } else {
+                    Some(id)
+                };
             } else if let Some(p) = self.pane_min.iter().position(|x| *x == id) {
                 self.pane_min.remove(p);
             } else {
@@ -4701,7 +6142,14 @@ impl YettyApp {
                     if let Some(t) = s.selected_text() {
                         // Global Options > Terminal > Web Browser
                         let g = &self.settings.global;
-                        term::open_url(t.trim(), if g.browser_registry { "" } else { &g.browser_path });
+                        term::open_url(
+                            t.trim(),
+                            if g.browser_registry {
+                                ""
+                            } else {
+                                &g.browser_path
+                            },
+                        );
                     }
                 }
                 "keyword" => {
@@ -4743,7 +6191,10 @@ impl YettyApp {
 
     fn dialogs_inner(&mut self, ctx: &egui::Context) {
         // ESC closes the sub-window that is on top (Quick Connect and Session Options handle their own).
-        if self.quick.is_none() && self.options.is_none() && ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+        if self.quick.is_none()
+            && self.options.is_none()
+            && ctx.input(|i| i.key_pressed(egui::Key::Escape))
+        {
             let closed = if self.prompt.is_some() {
                 self.prompt = None;
                 true
@@ -4827,7 +6278,11 @@ impl YettyApp {
                         let mut c = q.cfg.clone();
                         // saved under the hostname, as the original does; a name already used in the folder gets
                         // " (1)", " (2)"... instead of a second session with the same name
-                        let base = if c.name.trim().is_empty() { c.host.trim().to_string() } else { c.name.trim().to_string() };
+                        let base = if c.name.trim().is_empty() {
+                            c.host.trim().to_string()
+                        } else {
+                            c.name.trim().to_string()
+                        };
                         c.name = self.free_session_name(&c.folder, &base);
                         self.settings.sessions.push(c);
                     }
@@ -4874,22 +6329,28 @@ impl YettyApp {
                 globaldlg::GlobalOut::Tool(_) => self.tool_manage_agent_keys(ctx),
             }
         }
-        if self.keymap_open {
-            if !keymapdlg::window(ctx, &mut self.settings, &mut self.keymap_state) {
-                self.keymap_open = false;
-                self.dirty = true;
-            }
+        if self.keymap_open && !keymapdlg::window(ctx, &mut self.settings, &mut self.keymap_state) {
+            self.keymap_open = false;
+            self.dirty = true;
         }
         if let Some(w) = self.wizard.as_mut() {
             match crate::wizard::window(ctx, w, &self.settings) {
                 crate::wizard::WizardOut::Open => {}
                 crate::wizard::WizardOut::Cancel => self.wizard = None,
-                crate::wizard::WizardOut::Finish { cfg, dont_use_again } => {
+                crate::wizard::WizardOut::Finish {
+                    cfg,
+                    dont_use_again,
+                } => {
                     // the name must identify the session: a name already used in the folder is refused and the
                     // wizard stays open on its name page
-                    let taken = self.settings.sessions.iter().any(|s| s.folder == cfg.folder && s.display_name().eq_ignore_ascii_case(&cfg.name));
+                    let taken = self.settings.sessions.iter().any(|s| {
+                        s.folder == cfg.folder && s.display_name().eq_ignore_ascii_case(&cfg.name)
+                    });
                     if taken {
-                        self.error_msg = Some(format!("A session named \"{}\" already exists in this folder.", cfg.name));
+                        self.error_msg = Some(format!(
+                            "A session named \"{}\" already exists in this folder.",
+                            cfg.name
+                        ));
                     } else {
                         // the wizard only creates the session (in the Session Manager), as in the original
                         self.settings.sessions.push(*cfg);
@@ -4906,33 +6367,52 @@ impl YettyApp {
         if self.keyassist_open {
             let mut open = true;
             let mut create = false;
-            dialogs::dialog(ctx, "pubkey_assistant", "Public-Key Assistant", 460.0, &mut open, true, |ui| {
-                let dir = std::env::var_os("USERPROFILE").map(|p| std::path::PathBuf::from(p).join(".ssh"));
-                let mut found = false;
-                if let Some(dir) = dir {
-                    if let Ok(rd) = std::fs::read_dir(&dir) {
-                        for e in rd.flatten() {
-                            let p = e.path();
-                            if p.extension().map(|x| x == "pub").unwrap_or(false) {
-                                found = true;
-                                let text = std::fs::read_to_string(&p).unwrap_or_default();
-                                ui.label(RichText::new(p.file_name().unwrap_or_default().to_string_lossy()).strong());
-                                ui.add(egui::TextEdit::multiline(&mut text.trim().to_string()).desired_rows(2).desired_width(480.0).font(egui::TextStyle::Monospace));
-                                if ui.button("Copy public key").clicked() {
-                                    ctx.copy_text(text.trim().to_string());
+            dialogs::dialog(
+                ctx,
+                "pubkey_assistant",
+                "Public-Key Assistant",
+                460.0,
+                &mut open,
+                true,
+                |ui| {
+                    let dir = std::env::var_os("USERPROFILE")
+                        .map(|p| std::path::PathBuf::from(p).join(".ssh"));
+                    let mut found = false;
+                    if let Some(dir) = dir {
+                        if let Ok(rd) = std::fs::read_dir(&dir) {
+                            for e in rd.flatten() {
+                                let p = e.path();
+                                if p.extension().map(|x| x == "pub").unwrap_or(false) {
+                                    found = true;
+                                    let text = std::fs::read_to_string(&p).unwrap_or_default();
+                                    ui.label(
+                                        RichText::new(
+                                            p.file_name().unwrap_or_default().to_string_lossy(),
+                                        )
+                                        .strong(),
+                                    );
+                                    ui.add(
+                                        egui::TextEdit::multiline(&mut text.trim().to_string())
+                                            .desired_rows(2)
+                                            .desired_width(480.0)
+                                            .font(egui::TextStyle::Monospace),
+                                    );
+                                    if ui.button("Copy public key").clicked() {
+                                        ctx.copy_text(text.trim().to_string());
+                                    }
+                                    ui.separator();
                                 }
-                                ui.separator();
                             }
                         }
                     }
-                }
-                if !found {
-                    ui.label("No public keys found in your .ssh folder.");
-                }
-                if ui.button("Create Public Key...").clicked() {
-                    create = true;
-                }
-            });
+                    if !found {
+                        ui.label("No public keys found in your .ssh folder.");
+                    }
+                    if ui.button("Create Public Key...").clicked() {
+                        create = true;
+                    }
+                },
+            );
             if create {
                 self.keyassist_open = false;
                 let mut cfg = self.settings.defaults_for(Protocol::LocalShell);
@@ -4947,19 +6427,27 @@ impl YettyApp {
         if self.snapshots_open {
             let mut open = true;
             let mut del = None;
-            dialogs::dialog(ctx, "snapshots_win", "Manage Snapshots", 360.0, &mut open, true, |ui| {
-                for (i, (n, c)) in self.settings.snapshots.iter().enumerate() {
-                    ui.horizontal(|ui| {
-                        ui.label(format!("{n} ({} sessions)", c.len()));
-                        if ui.small_button("Delete").clicked() {
-                            del = Some(i);
-                        }
-                    });
-                }
-                if self.settings.snapshots.is_empty() {
-                    ui.label("No snapshots saved.");
-                }
-            });
+            dialogs::dialog(
+                ctx,
+                "snapshots_win",
+                "Manage Snapshots",
+                360.0,
+                &mut open,
+                true,
+                |ui| {
+                    for (i, (n, c)) in self.settings.snapshots.iter().enumerate() {
+                        ui.horizontal(|ui| {
+                            ui.label(format!("{n} ({} sessions)", c.len()));
+                            if ui.small_button("Delete").clicked() {
+                                del = Some(i);
+                            }
+                        });
+                    }
+                    if self.settings.snapshots.is_empty() {
+                        ui.label("No snapshots saved.");
+                    }
+                },
+            );
             if let Some(i) = del {
                 self.settings.snapshots.remove(i);
                 self.dirty = true;
@@ -4972,12 +6460,25 @@ impl YettyApp {
         if let Some(text) = &mut self.scratch {
             let mut open = true;
             let mut send = false;
-            dialogs::dialog(ctx, "scratchpad_win", "Scratchpad", 500.0, &mut open, true, |ui| {
-                ui.add(egui::TextEdit::multiline(text).desired_rows(12).desired_width(f32::INFINITY).font(egui::TextStyle::Monospace));
-                if ui.button("Send to session").clicked() {
-                    send = true;
-                }
-            });
+            dialogs::dialog(
+                ctx,
+                "scratchpad_win",
+                "Scratchpad",
+                500.0,
+                &mut open,
+                true,
+                |ui| {
+                    ui.add(
+                        egui::TextEdit::multiline(text)
+                            .desired_rows(12)
+                            .desired_width(f32::INFINITY)
+                            .font(egui::TextStyle::Monospace),
+                    );
+                    if ui.button("Send to session").clicked() {
+                        send = true;
+                    }
+                },
+            );
             if send {
                 let t = text.replace("\r\n", "\r").replace('\n', "\r");
                 if let Some(s) = self.sessions.get_mut(self.active) {
@@ -5017,7 +6518,11 @@ impl YettyApp {
                 let q = self.find.query.clone();
                 let cs = self.find.case_sensitive;
                 if let Some(s) = self.sessions.get_mut(self.active) {
-                    self.find.message = if s.find(&q, back, cs) { String::new() } else { format!("\"{q}\" not found") };
+                    self.find.message = if s.find(&q, back, cs) {
+                        String::new()
+                    } else {
+                        format!("\"{q}\" not found")
+                    };
                 }
             }
             if !open {
@@ -5062,20 +6567,43 @@ impl YettyApp {
                 if let Some(x) = s.xfer.as_mut() {
                     let title = x.label().to_string();
                     let mut still_open = true;
-                    dialogs::dialog(ctx, "xfer_win", &title, 340.0, &mut still_open, false, |ui| {
-                        ui.label(if x.name.is_empty() { "(waiting for the file name)".to_string() } else { x.name.clone() });
-                        let frac = if x.total > 0 { (x.bytes_done as f32 / x.total as f32).clamp(0.0, 1.0) } else { 0.0 };
-                        ui.add(egui::ProgressBar::new(frac).text(format!("{} / {} bytes", x.bytes_done, x.total)));
-                        let col = if x.failed { Color32::from_rgb(0xe0, 0x50, 0x50) } else { ui.visuals().text_color() };
-                        ui.label(RichText::new(x.status.clone()).color(col));
-                        if x.done {
-                            if ui.button("Close").clicked() {
-                                close = true;
+                    dialogs::dialog(
+                        ctx,
+                        "xfer_win",
+                        &title,
+                        340.0,
+                        &mut still_open,
+                        false,
+                        |ui| {
+                            ui.label(if x.name.is_empty() {
+                                "(waiting for the file name)".to_string()
+                            } else {
+                                x.name.clone()
+                            });
+                            let frac = if x.total > 0 {
+                                (x.bytes_done as f32 / x.total as f32).clamp(0.0, 1.0)
+                            } else {
+                                0.0
+                            };
+                            ui.add(
+                                egui::ProgressBar::new(frac)
+                                    .text(format!("{} / {} bytes", x.bytes_done, x.total)),
+                            );
+                            let col = if x.failed {
+                                Color32::from_rgb(0xe0, 0x50, 0x50)
+                            } else {
+                                ui.visuals().text_color()
+                            };
+                            ui.label(RichText::new(x.status.clone()).color(col));
+                            if x.done {
+                                if ui.button("Close").clicked() {
+                                    close = true;
+                                }
+                            } else if ui.button("Cancel").clicked() {
+                                cancel_out = Some(x.cancel());
                             }
-                        } else if ui.button("Cancel").clicked() {
-                            cancel_out = Some(x.cancel());
-                        }
-                    });
+                        },
+                    );
                 }
                 if let Some(out) = cancel_out {
                     if let Some(c) = &s.conn {
@@ -5094,30 +6622,44 @@ impl YettyApp {
             let mut add = false;
             let mut clear = false;
             let mut remove: Option<usize> = None;
-            dialogs::dialog(ctx, "zm_list", "Zmodem Upload List", 440.0, &mut open, true, |ui| {
-                ui.label("Files sent by Start Zmodem Upload (after the upload command of the session has run on the host):");
-                egui::ScrollArea::vertical().max_height(180.0).auto_shrink([false, true]).show(ui, |ui| {
-                    if self.zm_list.is_empty() {
-                        ui.weak("(no files)");
-                    }
-                    for (i, p) in self.zm_list.iter().enumerate() {
-                        ui.horizontal(|ui| {
-                            if ui.small_button("✖").on_hover_text("Remove").clicked() {
-                                remove = Some(i);
+            dialogs::dialog(
+                ctx,
+                "zm_list",
+                "Zmodem Upload List",
+                440.0,
+                &mut open,
+                true,
+                |ui| {
+                    ui.label("Files sent by Start Zmodem Upload (after the upload command of the session has run on the host):");
+                    egui::ScrollArea::vertical()
+                        .max_height(180.0)
+                        .auto_shrink([false, true])
+                        .show(ui, |ui| {
+                            if self.zm_list.is_empty() {
+                                ui.weak("(no files)");
                             }
-                            ui.label(p);
+                            for (i, p) in self.zm_list.iter().enumerate() {
+                                ui.horizontal(|ui| {
+                                    if ui.small_button("✖").on_hover_text("Remove").clicked() {
+                                        remove = Some(i);
+                                    }
+                                    ui.label(p);
+                                });
+                            }
                         });
-                    }
-                });
-                ui.horizontal(|ui| {
-                    if ui.button("Add...").clicked() {
-                        add = true;
-                    }
-                    if ui.add_enabled(!self.zm_list.is_empty(), egui::Button::new("Clear")).clicked() {
-                        clear = true;
-                    }
-                });
-            });
+                    ui.horizontal(|ui| {
+                        if ui.button("Add...").clicked() {
+                            add = true;
+                        }
+                        if ui
+                            .add_enabled(!self.zm_list.is_empty(), egui::Button::new("Clear"))
+                            .clicked()
+                        {
+                            clear = true;
+                        }
+                    });
+                },
+            );
             if add {
                 if let Some(p) = config::browse_file("Add a file to the Zmodem upload list", None) {
                     self.zm_list.push(p);
@@ -5135,12 +6677,20 @@ impl YettyApp {
         }
         if self.trace_open {
             let mut open = true;
-            dialogs::dialog(ctx, "trace_win", "Trace Options", 340.0, &mut open, true, |ui| {
-                if let Some(s) = self.sessions.get_mut(self.active) {
-                    ui.checkbox(&mut s.cfg.ssh_verbose, "Show SSH debug messages (ssh -v)");
-                    ui.weak("Takes effect the next time this tab connects.");
-                }
-            });
+            dialogs::dialog(
+                ctx,
+                "trace_win",
+                "Trace Options",
+                340.0,
+                &mut open,
+                true,
+                |ui| {
+                    if let Some(s) = self.sessions.get_mut(self.active) {
+                        ui.checkbox(&mut s.cfg.ssh_verbose, "Show SSH debug messages (ssh -v)");
+                        ui.weak("Takes effect the next time this tab connects.");
+                    }
+                },
+            );
             if !open {
                 self.trace_open = false;
             }
@@ -5148,58 +6698,96 @@ impl YettyApp {
 
         if self.creds_open {
             let mut open = true;
-            dialogs::dialog(ctx, "creds_win", "Saved Credentials", 400.0, &mut open, true, |ui| {
-                ui.set_min_width(380.0);
-                ui.horizontal_top(|ui| {
-                    ui.vertical(|ui| {
-                        ui.set_min_size(egui::vec2(150.0, 160.0));
-                        for (i, c) in self.settings.credentials.iter().enumerate() {
-                            if ui.selectable_label(self.cred_sel == Some(i), if c.name.is_empty() { "(unnamed)" } else { &c.name }).clicked() {
-                                self.cred_sel = Some(i);
+            dialogs::dialog(
+                ctx,
+                "creds_win",
+                "Saved Credentials",
+                400.0,
+                &mut open,
+                true,
+                |ui| {
+                    ui.set_min_width(380.0);
+                    ui.horizontal_top(|ui| {
+                        ui.vertical(|ui| {
+                            ui.set_min_size(egui::vec2(150.0, 160.0));
+                            for (i, c) in self.settings.credentials.iter().enumerate() {
+                                if ui
+                                    .selectable_label(
+                                        self.cred_sel == Some(i),
+                                        if c.name.is_empty() {
+                                            "(unnamed)"
+                                        } else {
+                                            &c.name
+                                        },
+                                    )
+                                    .clicked()
+                                {
+                                    self.cred_sel = Some(i);
+                                }
                             }
-                        }
+                        });
+                        ui.vertical(|ui| {
+                            if let Some(i) = self
+                                .cred_sel
+                                .filter(|i| *i < self.settings.credentials.len())
+                            {
+                                let c = &mut self.settings.credentials[i];
+                                egui::Grid::new("cred_grid").num_columns(2).show(ui, |ui| {
+                                    ui.label("Name:");
+                                    ui.text_edit_singleline(&mut c.name);
+                                    ui.end_row();
+                                    ui.label("Username:");
+                                    ui.text_edit_singleline(&mut c.user);
+                                    ui.end_row();
+                                    ui.label("Password:");
+                                    if self.cred_tmp_for != Some(i) {
+                                        self.cred_tmp_for = Some(i);
+                                        self.cred_tmp.clear();
+                                    }
+                                    let hint = if config::is_protected(&c.pass) {
+                                        "(saved: type to replace)"
+                                    } else {
+                                        ""
+                                    };
+                                    if ui
+                                        .add(
+                                            egui::TextEdit::singleline(&mut self.cred_tmp)
+                                                .password(true)
+                                                .hint_text(hint),
+                                        )
+                                        .changed()
+                                    {
+                                        c.pass = config::protect(&self.cred_tmp);
+                                    }
+                                    ui.end_row();
+                                });
+                                ui.weak("(Password will be encrypted.)");
+                            } else {
+                                ui.weak("Select a credential or add a new one.");
+                            }
+                        });
                     });
-                    ui.vertical(|ui| {
-                        if let Some(i) = self.cred_sel.filter(|i| *i < self.settings.credentials.len()) {
-                            let c = &mut self.settings.credentials[i];
-                            egui::Grid::new("cred_grid").num_columns(2).show(ui, |ui| {
-                                ui.label("Name:");
-                                ui.text_edit_singleline(&mut c.name);
-                                ui.end_row();
-                                ui.label("Username:");
-                                ui.text_edit_singleline(&mut c.user);
-                                ui.end_row();
-                                ui.label("Password:");
-                                if self.cred_tmp_for != Some(i) {
-                                    self.cred_tmp_for = Some(i);
-                                    self.cred_tmp.clear();
-                                }
-                                let hint = if config::is_protected(&c.pass) { "(saved: type to replace)" } else { "" };
-                                if ui.add(egui::TextEdit::singleline(&mut self.cred_tmp).password(true).hint_text(hint)).changed() {
-                                    c.pass = config::protect(&self.cred_tmp);
-                                }
-                                ui.end_row();
+                    ui.horizontal(|ui| {
+                        if ui.button("Add").clicked() {
+                            self.settings.credentials.push(config::Credential {
+                                name: "New credential".into(),
+                                ..Default::default()
                             });
-                            ui.weak("(Password will be encrypted.)");
-                        } else {
-                            ui.weak("Select a credential or add a new one.");
+                            self.cred_sel = Some(self.settings.credentials.len() - 1);
                         }
-                    });
-                });
-                ui.horizontal(|ui| {
-                    if ui.button("Add").clicked() {
-                        self.settings.credentials.push(config::Credential { name: "New credential".into(), ..Default::default() });
-                        self.cred_sel = Some(self.settings.credentials.len() - 1);
-                    }
-                    if ui.add_enabled(self.cred_sel.is_some(), egui::Button::new("Delete")).clicked() {
-                        if let Some(i) = self.cred_sel.take() {
-                            if i < self.settings.credentials.len() {
-                                self.settings.credentials.remove(i);
+                        if ui
+                            .add_enabled(self.cred_sel.is_some(), egui::Button::new("Delete"))
+                            .clicked()
+                        {
+                            if let Some(i) = self.cred_sel.take() {
+                                if i < self.settings.credentials.len() {
+                                    self.settings.credentials.remove(i);
+                                }
                             }
                         }
-                    }
-                });
-            });
+                    });
+                },
+            );
             if !open {
                 self.creds_open = false;
                 self.dirty = true;
@@ -5209,23 +6797,47 @@ impl YettyApp {
         // "Public Key Authentication Failed": the server refused the identity file chosen for the session.
         if let Some(idx) = self.sessions.iter().position(|s| s.pubkey_failed.is_some()) {
             let key = self.sessions[idx].pubkey_failed.clone().unwrap_or_default();
-            let (user, host) = (self.sessions[idx].cfg.username.clone(), self.sessions[idx].cfg.host.clone());
+            let (user, host) = (
+                self.sessions[idx].cfg.username.clone(),
+                self.sessions[idx].cfg.host.clone(),
+            );
             let mut open = true;
             let mut ok = false;
-            dialogs::dialog(ctx, "pubkey_failed", "Public Key Authentication Failed", 440.0, &mut open, true, |ui| {
-                ui.add_space(4.0);
-                ui.label(format!("The server {host} did not accept the public key for {}.", if user.is_empty() { "this user" } else { &user }));
-                ui.add_space(4.0);
-                ui.label(RichText::new(&key).monospace().size(11.5));
-                ui.add_space(4.0);
-                ui.label("Make sure the matching public key is in the server's authorized_keys file, then try again. The connection continues with the next authentication method.");
-                ui.add_space(6.0);
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.add(egui::Button::new("OK").min_size(egui::vec2(72.0, 22.0)).stroke(egui::Stroke::new(1.0, Color32::from_rgb(0x00, 0x78, 0xd4)))).clicked() {
-                        ok = true;
-                    }
-                });
-            });
+            dialogs::dialog(
+                ctx,
+                "pubkey_failed",
+                "Public Key Authentication Failed",
+                440.0,
+                &mut open,
+                true,
+                |ui| {
+                    ui.add_space(4.0);
+                    ui.label(format!(
+                        "The server {host} did not accept the public key for {}.",
+                        if user.is_empty() { "this user" } else { &user }
+                    ));
+                    ui.add_space(4.0);
+                    ui.label(RichText::new(&key).monospace().size(11.5));
+                    ui.add_space(4.0);
+                    ui.label("Make sure the matching public key is in the server's authorized_keys file, then try again. The connection continues with the next authentication method.");
+                    ui.add_space(6.0);
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui
+                            .add(
+                                egui::Button::new("OK")
+                                    .min_size(egui::vec2(72.0, 22.0))
+                                    .stroke(egui::Stroke::new(
+                                        1.0,
+                                        Color32::from_rgb(0x00, 0x78, 0xd4),
+                                    )),
+                            )
+                            .clicked()
+                        {
+                            ok = true;
+                        }
+                    });
+                },
+            );
             if ok || !open {
                 self.sessions[idx].pubkey_failed = None;
             }
@@ -5235,48 +6847,100 @@ impl YettyApp {
         if let Some(idx) = self.sessions.iter().position(|s| s.prompt_req.is_some()) {
             let req = self.sessions[idx].prompt_req.clone();
             let sid = self.sessions[idx].id;
-            let (user, host) = (self.sessions[idx].cfg.username.clone(), self.sessions[idx].cfg.host.clone());
+            let (user, host) = (
+                self.sessions[idx].cfg.username.clone(),
+                self.sessions[idx].cfg.host.clone(),
+            );
             match req {
                 Some(term::SshPrompt::HostKey { detail }) => {
-                    let host_line = detail.lines().find(|l| l.contains("authenticity of host")).unwrap_or("").to_string();
+                    let host_line = detail
+                        .lines()
+                        .find(|l| l.contains("authenticity of host"))
+                        .unwrap_or("")
+                        .to_string();
                     let shown_host = host_line.split('\'').nth(1).unwrap_or(&host).to_string();
-                    let finger = detail.lines().find(|l| l.contains("fingerprint is")).unwrap_or("").trim().to_string();
+                    let finger = detail
+                        .lines()
+                        .find(|l| l.contains("fingerprint is"))
+                        .unwrap_or("")
+                        .trim()
+                        .to_string();
                     let mut open = true;
                     let mut accept = false;
                     let mut cancel = false;
                     let show_id = egui::Id::new(("hk_view", sid));
                     let mut view: bool = ctx.data_mut(|d| d.get_temp(show_id).unwrap_or(false));
-                    dialogs::dialog(ctx, "new_host_key", "New Host Key", 460.0, &mut open, true, |ui| {
-                        ui.add_space(4.0);
-                        ui.label("The server's host key is not cached in the registry. You have no guarantee that the server is the computer you think it is.");
-                        ui.add_space(4.0);
-                        ui.label(format!("Hostname: {shown_host}"));
-                        if !finger.is_empty() {
-                            ui.label(RichText::new(&finger).monospace().size(11.5));
-                        }
-                        ui.add_space(4.0);
-                        ui.label("Accept and save the host key, or cancel the connection?");
-                        if view {
-                            egui::Frame::new().fill(ui.visuals().extreme_bg_color).stroke(egui::Stroke::new(1.0, ui.visuals().widgets.noninteractive.bg_stroke.color)).inner_margin(4).show(ui, |ui| {
-                                ui.set_width(ui.available_width());
-                                ui.label(RichText::new(&detail).monospace().size(11.0));
-                            });
-                        }
-                        ui.add_space(6.0);
-                        ui.horizontal(|ui| {
-                            if ui.add(egui::Button::new("View Host Key").min_size(egui::vec2(110.0, 22.0))).clicked() {
-                                view = !view;
+                    dialogs::dialog(
+                        ctx,
+                        "new_host_key",
+                        "New Host Key",
+                        460.0,
+                        &mut open,
+                        true,
+                        |ui| {
+                            ui.add_space(4.0);
+                            ui.label("The server's host key is not cached in the registry. You have no guarantee that the server is the computer you think it is.");
+                            ui.add_space(4.0);
+                            ui.label(format!("Hostname: {shown_host}"));
+                            if !finger.is_empty() {
+                                ui.label(RichText::new(&finger).monospace().size(11.5));
                             }
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                if ui.add(egui::Button::new("Cancel").min_size(egui::vec2(72.0, 22.0))).clicked() {
-                                    cancel = true;
+                            ui.add_space(4.0);
+                            ui.label("Accept and save the host key, or cancel the connection?");
+                            if view {
+                                egui::Frame::new()
+                                    .fill(ui.visuals().extreme_bg_color)
+                                    .stroke(egui::Stroke::new(
+                                        1.0,
+                                        ui.visuals().widgets.noninteractive.bg_stroke.color,
+                                    ))
+                                    .inner_margin(4)
+                                    .show(ui, |ui| {
+                                        ui.set_width(ui.available_width());
+                                        ui.label(RichText::new(&detail).monospace().size(11.0));
+                                    });
+                            }
+                            ui.add_space(6.0);
+                            ui.horizontal(|ui| {
+                                if ui
+                                    .add(
+                                        egui::Button::new("View Host Key")
+                                            .min_size(egui::vec2(110.0, 22.0)),
+                                    )
+                                    .clicked()
+                                {
+                                    view = !view;
                                 }
-                                if ui.add(egui::Button::new("Accept & Save").min_size(egui::vec2(110.0, 22.0)).stroke(egui::Stroke::new(1.0, Color32::from_rgb(0x00, 0x78, 0xd4)))).clicked() {
-                                    accept = true;
-                                }
+                                ui.with_layout(
+                                    egui::Layout::right_to_left(egui::Align::Center),
+                                    |ui| {
+                                        if ui
+                                            .add(
+                                                egui::Button::new("Cancel")
+                                                    .min_size(egui::vec2(72.0, 22.0)),
+                                            )
+                                            .clicked()
+                                        {
+                                            cancel = true;
+                                        }
+                                        if ui
+                                            .add(
+                                                egui::Button::new("Accept & Save")
+                                                    .min_size(egui::vec2(110.0, 22.0))
+                                                    .stroke(egui::Stroke::new(
+                                                        1.0,
+                                                        Color32::from_rgb(0x00, 0x78, 0xd4),
+                                                    )),
+                                            )
+                                            .clicked()
+                                        {
+                                            accept = true;
+                                        }
+                                    },
+                                );
                             });
-                        });
-                    });
+                        },
+                    );
                     ctx.data_mut(|d| d.insert_temp(show_id, view));
                     if accept {
                         self.sessions[idx].answer_prompt(Some("yes"));
@@ -5286,41 +6950,89 @@ impl YettyApp {
                 }
                 Some(term::SshPrompt::Password) => {
                     let pw_id = egui::Id::new(("pw_dlg", sid));
-                    let (mut pw, mut save): (String, bool) = ctx.data_mut(|d| d.get_temp(pw_id).unwrap_or_default());
+                    let (mut pw, mut save): (String, bool) =
+                        ctx.data_mut(|d| d.get_temp(pw_id).unwrap_or_default());
                     let mut open = true;
                     let (mut ok, mut skip, mut cancel) = (false, false, false);
-                    dialogs::dialog(ctx, "ssh_password", "Enter Secure Shell Password", 380.0, &mut open, true, |ui| {
-                        ui.add_space(4.0);
-                        ui.label(format!("Enter a password for {}@{}", if user.is_empty() { "user" } else { &user }, host));
-                        ui.add_space(4.0);
-                        let r = ui.add(egui::TextEdit::singleline(&mut pw).password(true).desired_width(f32::INFINITY));
-                        if !r.has_focus() && !r.lost_focus() {
-                            r.request_focus();
-                        }
-                        if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                            ok = true;
-                        }
-                        ui.checkbox(&mut save, "Save password");
-                        ui.add_space(6.0);
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.add(egui::Button::new("Cancel").min_size(egui::vec2(72.0, 22.0))).clicked() {
-                                cancel = true;
+                    dialogs::dialog(
+                        ctx,
+                        "ssh_password",
+                        "Enter Secure Shell Password",
+                        380.0,
+                        &mut open,
+                        true,
+                        |ui| {
+                            ui.add_space(4.0);
+                            ui.label(format!(
+                                "Enter a password for {}@{}",
+                                if user.is_empty() { "user" } else { &user },
+                                host
+                            ));
+                            ui.add_space(4.0);
+                            let r = ui.add(
+                                egui::TextEdit::singleline(&mut pw)
+                                    .password(true)
+                                    .desired_width(f32::INFINITY),
+                            );
+                            if !r.has_focus() && !r.lost_focus() {
+                                r.request_focus();
                             }
-                            if ui.add(egui::Button::new("Skip").min_size(egui::vec2(72.0, 22.0))).clicked() {
-                                skip = true;
-                            }
-                            if ui.add(egui::Button::new("OK").min_size(egui::vec2(72.0, 22.0)).stroke(egui::Stroke::new(1.0, Color32::from_rgb(0x00, 0x78, 0xd4)))).clicked() {
+                            if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                                 ok = true;
                             }
-                        });
-                    });
+                            ui.checkbox(&mut save, "Save password");
+                            ui.add_space(6.0);
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    if ui
+                                        .add(
+                                            egui::Button::new("Cancel")
+                                                .min_size(egui::vec2(72.0, 22.0)),
+                                        )
+                                        .clicked()
+                                    {
+                                        cancel = true;
+                                    }
+                                    if ui
+                                        .add(
+                                            egui::Button::new("Skip")
+                                                .min_size(egui::vec2(72.0, 22.0)),
+                                        )
+                                        .clicked()
+                                    {
+                                        skip = true;
+                                    }
+                                    if ui
+                                        .add(
+                                            egui::Button::new("OK")
+                                                .min_size(egui::vec2(72.0, 22.0))
+                                                .stroke(egui::Stroke::new(
+                                                    1.0,
+                                                    Color32::from_rgb(0x00, 0x78, 0xd4),
+                                                )),
+                                        )
+                                        .clicked()
+                                    {
+                                        ok = true;
+                                    }
+                                },
+                            );
+                        },
+                    );
                     ctx.data_mut(|d| d.insert_temp(pw_id, (pw.clone(), save)));
                     if ok {
                         if save && !pw.is_empty() {
                             let enc = config::protect(&pw);
                             self.sessions[idx].cfg.saved_password = enc.clone();
-                            let (h, u, p) = (host.clone(), user.clone(), self.sessions[idx].cfg.port);
-                            if let Some(s) = self.settings.sessions.iter_mut().find(|s| s.host == h && s.username == u && s.port == p) {
+                            let (h, u, p) =
+                                (host.clone(), user.clone(), self.sessions[idx].cfg.port);
+                            if let Some(s) = self
+                                .settings
+                                .sessions
+                                .iter_mut()
+                                .find(|s| s.host == h && s.username == u && s.port == p)
+                            {
                                 s.saved_password = enc;
                                 self.dirty = true;
                             }
@@ -5344,73 +7056,124 @@ impl YettyApp {
             let mut ok = false;
             let mut clear = false;
             let mut cancel = false;
-            dialogs::dialog(ctx, "cmd_props", "Command Properties", 560.0, &mut open, true, |ui| {
-                dialogs::group(ui, "Action", |ui| {
-                    ui.horizontal_top(|ui| {
-                        ui.vertical(|ui| {
-                            ui.set_width(170.0);
-                            ui.label("Function");
-                            egui::ComboBox::from_id_salt("cmd_func").width(165.0).selected_text("Send String").show_ui(ui, |ui| {
-                                let _ = ui.selectable_label(true, "Send String");
+            dialogs::dialog(
+                ctx,
+                "cmd_props",
+                "Command Properties",
+                560.0,
+                &mut open,
+                true,
+                |ui| {
+                    dialogs::group(ui, "Action", |ui| {
+                        ui.horizontal_top(|ui| {
+                            ui.vertical(|ui| {
+                                ui.set_width(170.0);
+                                ui.label("Function");
+                                egui::ComboBox::from_id_salt("cmd_func")
+                                    .width(165.0)
+                                    .selected_text("Send String")
+                                    .show_ui(ui, |ui| {
+                                        let _ = ui.selectable_label(true, "Send String");
+                                    });
+                                ui.checkbox(&mut def.disable_tooltip, "Disable tooltip");
                             });
-                            ui.checkbox(&mut def.disable_tooltip, "Disable tooltip");
-                        });
-                        ui.vertical(|ui| {
-                            ui.label("Send String");
-                            ui.add(egui::TextEdit::multiline(&mut def.text).desired_rows(3).desired_width(f32::INFINITY).font(egui::TextStyle::Monospace));
+                            ui.vertical(|ui| {
+                                ui.label("Send String");
+                                ui.add(
+                                    egui::TextEdit::multiline(&mut def.text)
+                                        .desired_rows(3)
+                                        .desired_width(f32::INFINITY)
+                                        .font(egui::TextStyle::Monospace),
+                                );
+                            });
                         });
                     });
-                });
-                dialogs::group(ui, "Appearance", |ui| {
+                    dialogs::group(ui, "Appearance", |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label("Label:");
+                            ui.add(egui::TextEdit::singleline(&mut def.label).desired_width(160.0));
+                            ui.add_space(8.0);
+                            ui.label("Icon color:");
+                            egui::ComboBox::from_id_salt("cmd_color")
+                                .width(120.0)
+                                .selected_text(def.color.clone())
+                                .show_ui(ui, |ui| {
+                                    for (n, _) in config::COMMAND_COLORS {
+                                        ui.selectable_value(&mut def.color, n.to_string(), n);
+                                    }
+                                });
+                            let (r, _) =
+                                ui.allocate_exact_size(egui::vec2(18.0, 18.0), Sense::hover());
+                            ui.painter()
+                                .circle_filled(r.center(), 8.0, cmd_icon_color(&def.color));
+                        });
+                    });
                     ui.horizontal(|ui| {
-                        ui.label("Label:");
-                        ui.add(egui::TextEdit::singleline(&mut def.label).desired_width(160.0));
-                        ui.add_space(8.0);
-                        ui.label("Icon color:");
-                        egui::ComboBox::from_id_salt("cmd_color").width(120.0).selected_text(def.color.clone()).show_ui(ui, |ui| {
-                            for (n, _) in config::COMMAND_COLORS {
-                                ui.selectable_value(&mut def.color, n.to_string(), n);
+                        ui.label("Description:");
+                        ui.add(
+                            egui::TextEdit::singleline(&mut def.description)
+                                .desired_width(f32::INFINITY),
+                        );
+                    });
+                    dialogs::group(ui, "Send String commands", |ui| {
+                        egui::Grid::new("cmd_help")
+                            .num_columns(3)
+                            .spacing([14.0, 2.0])
+                            .show(ui, |ui| {
+                                let rows = [
+                                    (
+                                        "\\r - sends a carriage return (CR)",
+                                        "\\p - pauses for one second",
+                                        "\\e - sends an escape",
+                                    ),
+                                    (
+                                        "\\n - sends a newline (LF)",
+                                        "\\t - sends a tab",
+                                        "\\b - sends a backspace",
+                                    ),
+                                    (
+                                        "\\\\ - sends a backslash",
+                                        "\\v - pastes contents of Clipboard to active session",
+                                        "",
+                                    ),
+                                ];
+                                for (a, b, c) in rows {
+                                    ui.label(RichText::new(a).size(10.5));
+                                    ui.label(RichText::new(b).size(10.5));
+                                    ui.label(RichText::new(c).size(10.5));
+                                    ui.end_row();
+                                }
+                            });
+                    });
+                    ui.add_space(4.0);
+                    ui.horizontal(|ui| {
+                        if ui
+                            .add(egui::Button::new("Clear").min_size(egui::vec2(72.0, 22.0)))
+                            .clicked()
+                        {
+                            clear = true;
+                        }
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui
+                                .add(egui::Button::new("Cancel").min_size(egui::vec2(72.0, 22.0)))
+                                .clicked()
+                            {
+                                cancel = true;
+                            }
+                            let valid = !def.label.trim().is_empty() && !def.text.is_empty();
+                            if ui
+                                .add_enabled(
+                                    valid,
+                                    egui::Button::new("OK").min_size(egui::vec2(72.0, 22.0)),
+                                )
+                                .clicked()
+                            {
+                                ok = true;
                             }
                         });
-                        let (r, _) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), Sense::hover());
-                        ui.painter().circle_filled(r.center(), 8.0, cmd_icon_color(&def.color));
                     });
-                });
-                ui.horizontal(|ui| {
-                    ui.label("Description:");
-                    ui.add(egui::TextEdit::singleline(&mut def.description).desired_width(f32::INFINITY));
-                });
-                dialogs::group(ui, "Send String commands", |ui| {
-                    egui::Grid::new("cmd_help").num_columns(3).spacing([14.0, 2.0]).show(ui, |ui| {
-                        let rows = [
-                            ("\\r - sends a carriage return (CR)", "\\p - pauses for one second", "\\e - sends an escape"),
-                            ("\\n - sends a newline (LF)", "\\t - sends a tab", "\\b - sends a backspace"),
-                            ("\\\\ - sends a backslash", "\\v - pastes contents of Clipboard to active session", ""),
-                        ];
-                        for (a, b, c) in rows {
-                            ui.label(RichText::new(a).size(10.5));
-                            ui.label(RichText::new(b).size(10.5));
-                            ui.label(RichText::new(c).size(10.5));
-                            ui.end_row();
-                        }
-                    });
-                });
-                ui.add_space(4.0);
-                ui.horizontal(|ui| {
-                    if ui.add(egui::Button::new("Clear").min_size(egui::vec2(72.0, 22.0))).clicked() {
-                        clear = true;
-                    }
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.add(egui::Button::new("Cancel").min_size(egui::vec2(72.0, 22.0))).clicked() {
-                            cancel = true;
-                        }
-                        let valid = !def.label.trim().is_empty() && !def.text.is_empty();
-                        if ui.add_enabled(valid, egui::Button::new("OK").min_size(egui::vec2(72.0, 22.0))).clicked() {
-                            ok = true;
-                        }
-                    });
-                });
-            });
+                },
+            );
             if clear {
                 def.text.clear();
                 def.label.clear();
@@ -5437,44 +7200,77 @@ impl YettyApp {
             let shown = text.replace('\r', "\n");
             let mut open = true;
             let mut paste = false;
-            let mut dont_show: bool = ctx.data_mut(|d| d.get_temp(egui::Id::new("mp_dont")).unwrap_or(false));
+            let mut dont_show: bool =
+                ctx.data_mut(|d| d.get_temp(egui::Id::new("mp_dont")).unwrap_or(false));
             let mut delay_on = self.settings.paste_delay_on;
             let mut delay_ms = self.settings.paste_delay_ms;
             let mut cancel = false;
-            dialogs::dialog(ctx, "multi_paste", "Confirm Multi-line Paste", 600.0, &mut open, true, |ui| {
-                ui.add_space(4.0);
-                ui.label("Clipboard contents:");
-                ui.horizontal_top(|ui| {
-                    egui::Frame::new()
-                        .fill(ui.visuals().extreme_bg_color)
-                        .stroke(egui::Stroke::new(1.0, ui.visuals().widgets.noninteractive.bg_stroke.color))
-                        .show(ui, |ui| {
-                            egui::ScrollArea::both().id_salt("mp_scroll").max_height(200.0).min_scrolled_height(200.0).show(ui, |ui| {
-                                ui.set_min_size(egui::vec2(470.0, 196.0));
-                                let mut ro: &str = &shown;
-                                ui.add(egui::TextEdit::multiline(&mut ro).font(egui::TextStyle::Monospace).frame(egui::Frame::NONE).desired_width(f32::INFINITY));
+            dialogs::dialog(
+                ctx,
+                "multi_paste",
+                "Confirm Multi-line Paste",
+                600.0,
+                &mut open,
+                true,
+                |ui| {
+                    ui.add_space(4.0);
+                    ui.label("Clipboard contents:");
+                    ui.horizontal_top(|ui| {
+                        egui::Frame::new()
+                            .fill(ui.visuals().extreme_bg_color)
+                            .stroke(egui::Stroke::new(
+                                1.0,
+                                ui.visuals().widgets.noninteractive.bg_stroke.color,
+                            ))
+                            .show(ui, |ui| {
+                                egui::ScrollArea::both()
+                                    .id_salt("mp_scroll")
+                                    .max_height(200.0)
+                                    .min_scrolled_height(200.0)
+                                    .show(ui, |ui| {
+                                        ui.set_min_size(egui::vec2(470.0, 196.0));
+                                        let mut ro: &str = &shown;
+                                        ui.add(
+                                            egui::TextEdit::multiline(&mut ro)
+                                                .font(egui::TextStyle::Monospace)
+                                                .frame(egui::Frame::NONE)
+                                                .desired_width(f32::INFINITY),
+                                        );
+                                    });
                             });
+                        ui.vertical(|ui| {
+                            ui.spacing_mut().item_spacing.y = 8.0;
+                            let pb = egui::Button::new("Paste")
+                                .min_size(egui::vec2(72.0, 22.0))
+                                .stroke(egui::Stroke::new(
+                                    1.0,
+                                    Color32::from_rgb(0x00, 0x78, 0xd4),
+                                ));
+                            if ui.add(pb).clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter))
+                            {
+                                paste = true;
+                            }
+                            if ui
+                                .add(egui::Button::new("Cancel").min_size(egui::vec2(72.0, 22.0)))
+                                .clicked()
+                            {
+                                cancel = true;
+                            }
                         });
-                    ui.vertical(|ui| {
-                        ui.spacing_mut().item_spacing.y = 8.0;
-                        let pb = egui::Button::new("Paste").min_size(egui::vec2(72.0, 22.0)).stroke(egui::Stroke::new(1.0, Color32::from_rgb(0x00, 0x78, 0xd4)));
-                        if ui.add(pb).clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                            paste = true;
-                        }
-                        if ui.add(egui::Button::new("Cancel").min_size(egui::vec2(72.0, 22.0))).clicked() {
-                            cancel = true;
-                        }
                     });
-                });
-                ui.add_space(6.0);
-                ui.horizontal(|ui| {
-                    ui.checkbox(&mut dont_show, "Do not show this dialog again");
-                    ui.add_space(30.0);
-                    ui.checkbox(&mut delay_on, "Override line send delay:");
-                    ui.add_enabled(delay_on, egui::DragValue::new(&mut delay_ms).range(0..=5000));
-                    ui.label("milliseconds");
-                });
-            });
+                    ui.add_space(6.0);
+                    ui.horizontal(|ui| {
+                        ui.checkbox(&mut dont_show, "Do not show this dialog again");
+                        ui.add_space(30.0);
+                        ui.checkbox(&mut delay_on, "Override line send delay:");
+                        ui.add_enabled(
+                            delay_on,
+                            egui::DragValue::new(&mut delay_ms).range(0..=5000),
+                        );
+                        ui.label("milliseconds");
+                    });
+                },
+            );
             ctx.data_mut(|d| d.insert_temp(egui::Id::new("mp_dont"), dont_show));
             if paste {
                 self.settings.paste_delay_on = delay_on;
@@ -5483,7 +7279,11 @@ impl YettyApp {
                     self.settings.paste_confirm = false;
                 }
                 self.dirty = true;
-                let delay = if delay_on { Some(delay_ms as u64) } else { None };
+                let delay = if delay_on {
+                    Some(delay_ms as u64)
+                } else {
+                    None
+                };
                 self.sessions[idx].paste_text(&text, delay);
                 self.sessions[idx].pending_paste = None;
                 self.focus_terminal = true;
@@ -5505,23 +7305,34 @@ impl YettyApp {
             let mut open = true;
             let mut stop = false;
             ctx.request_repaint_after(Duration::from_millis(500));
-            dialogs::dialog(ctx, "tftp_win", "TFTP Server", 500.0, &mut open, true, |ui| {
-                if let Some(t) = &self.tftp {
-                    ui.label(format!("Listening on UDP port {}", t.port));
-                    ui.label(format!("Folder: {}", t.root.display()));
-                    ui.separator();
-                    egui::ScrollArea::vertical().max_height(180.0).stick_to_bottom(true).show(ui, |ui| {
-                        for l in t.log.lock().unwrap().iter() {
-                            ui.monospace(l);
+            dialogs::dialog(
+                ctx,
+                "tftp_win",
+                "TFTP Server",
+                500.0,
+                &mut open,
+                true,
+                |ui| {
+                    if let Some(t) = &self.tftp {
+                        ui.label(format!("Listening on UDP port {}", t.port));
+                        ui.label(format!("Folder: {}", t.root.display()));
+                        ui.separator();
+                        egui::ScrollArea::vertical()
+                            .max_height(180.0)
+                            .stick_to_bottom(true)
+                            .show(ui, |ui| {
+                                for l in t.log.lock().unwrap().iter() {
+                                    ui.monospace(l);
+                                }
+                            });
+                        if ui.button("Stop TFTP Server").clicked() {
+                            stop = true;
                         }
-                    });
-                    if ui.button("Stop TFTP Server").clicked() {
-                        stop = true;
+                    } else {
+                        ui.label("The TFTP server is not running.");
                     }
-                } else {
-                    ui.label("The TFTP server is not running.");
-                }
-            });
+                },
+            );
             if stop {
                 if let Some(t) = &self.tftp {
                     t.stop();
@@ -5535,25 +7346,36 @@ impl YettyApp {
         }
 
         if self.about_open {
-            dialogs::dialog(ctx, "about_win", "About Yetty", 400.0, &mut self.about_open, true, |ui| {
-                ui.add_space(6.0);
-                ui.label(RichText::new("Yetty").strong().size(24.0));
-                ui.label(format!("Version {}", env!("CARGO_PKG_VERSION")));
-                ui.add_space(8.0);
-                ui.label("A tabbed terminal client for Windows with SSH2, SFTP, Telnet, RLogin, serial and local shell sessions, file transfers, tab groups and scripting.");
-                ui.add_space(6.0);
-                ui.weak("SSH connections use the OpenSSH client that ships with Windows.");
-                ui.add_space(10.0);
-                ui.separator();
-                ui.add_space(4.0);
-                ui.label(RichText::new("License").strong());
-                ui.label("Released under the MIT License.");
-                ui.label("Copyright \u{00A9} 2026 Leonardo Berbert");
-                ui.add_space(8.0);
-                ui.label(RichText::new("Source code and issue tracker").strong());
-                ui.hyperlink_to("github.com/leoberbert/Yetty", "https://github.com/leoberbert/Yetty");
-                ui.add_space(4.0);
-            });
+            dialogs::dialog(
+                ctx,
+                "about_win",
+                "About Yetty",
+                400.0,
+                &mut self.about_open,
+                true,
+                |ui| {
+                    ui.add_space(6.0);
+                    ui.label(RichText::new("Yetty").strong().size(24.0));
+                    ui.label(format!("Version {}", env!("CARGO_PKG_VERSION")));
+                    ui.add_space(8.0);
+                    ui.label("A tabbed terminal client for Windows with SSH2, SFTP, Telnet, RLogin, serial and local shell sessions, file transfers, tab groups and scripting.");
+                    ui.add_space(6.0);
+                    ui.weak("SSH connections use the OpenSSH client that ships with Windows.");
+                    ui.add_space(10.0);
+                    ui.separator();
+                    ui.add_space(4.0);
+                    ui.label(RichText::new("License").strong());
+                    ui.label("Released under the MIT License.");
+                    ui.label("Copyright \u{00A9} 2026 Leonardo Berbert");
+                    ui.add_space(8.0);
+                    ui.label(RichText::new("Source code and issue tracker").strong());
+                    ui.hyperlink_to(
+                        "github.com/leoberbert/Yetty",
+                        "https://github.com/leoberbert/Yetty",
+                    );
+                    ui.add_space(4.0);
+                },
+            );
         }
     }
 
@@ -5566,7 +7388,11 @@ impl YettyApp {
         dialogs::dialog(ctx, "prompt", p.title, 450.0, &mut open, true, |ui| {
             ui.label(p.label);
             let password = p.kind == Prompt::LockPassword;
-            let r = ui.add(egui::TextEdit::singleline(&mut p.text).password(password).desired_width(420.0));
+            let r = ui.add(
+                egui::TextEdit::singleline(&mut p.text)
+                    .password(password)
+                    .desired_width(420.0),
+            );
             if !r.has_focus() && !r.lost_focus() {
                 r.request_focus();
             }
@@ -5575,19 +7401,38 @@ impl YettyApp {
             }
             // 0 = nothing to browse, 1 = open a file, 2 = save a file, 3 = choose a folder
             let browse = match p.kind {
-                Prompt::SendAscii | Prompt::SendBinary | Prompt::ImportSettings | Prompt::ConvertKey | Prompt::XferSend(_) => 1,
-                Prompt::ReceiveAscii | Prompt::LogFile | Prompt::SaveScript | Prompt::ExportSettings | Prompt::ExportSessions | Prompt::XferRecv(_) => 2,
+                Prompt::SendAscii
+                | Prompt::SendBinary
+                | Prompt::ImportSettings
+                | Prompt::ConvertKey
+                | Prompt::XferSend(_) => 1,
+                Prompt::ReceiveAscii
+                | Prompt::LogFile
+                | Prompt::SaveScript
+                | Prompt::ExportSettings
+                | Prompt::ExportSessions
+                | Prompt::XferRecv(_) => 2,
                 Prompt::TftpFolder => 3,
                 _ => 0,
             };
             ui.horizontal(|ui| {
-                if ui.add(egui::Button::new("OK").min_size(egui::vec2(72.0, 22.0))).clicked() {
+                if ui
+                    .add(egui::Button::new("OK").min_size(egui::vec2(72.0, 22.0)))
+                    .clicked()
+                {
                     ok = true;
                 }
-                if ui.add(egui::Button::new("Cancel").min_size(egui::vec2(72.0, 22.0))).clicked() {
+                if ui
+                    .add(egui::Button::new("Cancel").min_size(egui::vec2(72.0, 22.0)))
+                    .clicked()
+                {
                     cancel = true;
                 }
-                if browse != 0 && ui.add(egui::Button::new("Browse...").min_size(egui::vec2(72.0, 22.0))).clicked() {
+                if browse != 0
+                    && ui
+                        .add(egui::Button::new("Browse...").min_size(egui::vec2(72.0, 22.0)))
+                        .clicked()
+                {
                     let picked = match browse {
                         1 => config::browse_file("Select file", None),
                         2 => config::browse_save("Save as"),
@@ -5650,7 +7495,11 @@ impl YettyApp {
                 }
             }
             Prompt::SaveScript => {
-                if let Some(s) = self.sessions.iter_mut().find(|s| Some(s.id) == self.rec_target) {
+                if let Some(s) = self
+                    .sessions
+                    .iter_mut()
+                    .find(|s| Some(s.id) == self.rec_target)
+                {
                     if let Some(lines) = s.recording.take() {
                         if let Some(parent) = std::path::Path::new(&text).parent() {
                             let _ = std::fs::create_dir_all(parent);
@@ -5672,7 +7521,10 @@ impl YettyApp {
                     };
                 }
             }
-            Prompt::ImportSettings => match std::fs::read_to_string(&text).ok().and_then(|s| serde_json::from_str::<Settings>(&s).ok()) {
+            Prompt::ImportSettings => match std::fs::read_to_string(&text)
+                .ok()
+                .and_then(|s| serde_json::from_str::<Settings>(&s).ok())
+            {
                 Some(s) => {
                     self.settings = s;
                     self.dirty = true;
@@ -5681,8 +7533,16 @@ impl YettyApp {
                 None => self.status_msg = "That file is not a valid settings file".into(),
             },
             Prompt::ExportSessions => {
-                let list: Vec<&SessionConfig> = self.selected.and_then(|i| self.settings.sessions.get(i)).into_iter().collect();
-                let list: Vec<&SessionConfig> = if list.is_empty() { self.settings.sessions.iter().collect() } else { list };
+                let list: Vec<&SessionConfig> = self
+                    .selected
+                    .and_then(|i| self.settings.sessions.get(i))
+                    .into_iter()
+                    .collect();
+                let list: Vec<&SessionConfig> = if list.is_empty() {
+                    self.settings.sessions.iter().collect()
+                } else {
+                    list
+                };
                 if let Ok(j) = serde_json::to_string_pretty(&list) {
                     self.status_msg = match std::fs::write(&text, j) {
                         Ok(()) => format!("Sessions exported to {text}"),
@@ -5735,8 +7595,16 @@ impl YettyApp {
                 if t.is_empty() {
                     self.error_msg = Some("Enter a name for the folder.".into());
                 } else if t.chars().any(|c| "\\:*?\"<>|".contains(c)) {
-                    self.error_msg = Some("A folder name cannot contain any of these characters:\n\\ : * ? \" < > |".into());
-                } else if self.settings.command_folders.iter().any(|f| f.eq_ignore_ascii_case(&t)) {
+                    self.error_msg = Some(
+                        "A folder name cannot contain any of these characters:\n\\ : * ? \" < > |"
+                            .into(),
+                    );
+                } else if self
+                    .settings
+                    .command_folders
+                    .iter()
+                    .any(|f| f.eq_ignore_ascii_case(&t))
+                {
                     self.error_msg = Some(format!("A folder named \"{t}\" already exists."));
                 } else {
                     self.settings.command_folders.push(t);
@@ -5748,8 +7616,16 @@ impl YettyApp {
                 if t.is_empty() {
                     self.error_msg = Some("Enter a name for the folder.".into());
                 } else if t.chars().any(|c| "\\:*?\"<>|".contains(c)) {
-                    self.error_msg = Some("A folder name cannot contain any of these characters:\n\\ : * ? \" < > |".into());
-                } else if self.settings.folders.iter().any(|f| f.eq_ignore_ascii_case(&t)) {
+                    self.error_msg = Some(
+                        "A folder name cannot contain any of these characters:\n\\ : * ? \" < > |"
+                            .into(),
+                    );
+                } else if self
+                    .settings
+                    .folders
+                    .iter()
+                    .any(|f| f.eq_ignore_ascii_case(&t))
+                {
                     self.error_msg = Some(format!("A folder named \"{t}\" already exists."));
                 } else {
                     self.settings.folders.push(t);
@@ -5757,13 +7633,25 @@ impl YettyApp {
                 }
             }
             Prompt::DuplicateSession(i) => {
-                let folder = self.settings.sessions.get(i).map(|s| s.folder.clone()).unwrap_or_default();
+                let folder = self
+                    .settings
+                    .sessions
+                    .get(i)
+                    .map(|s| s.folder.clone())
+                    .unwrap_or_default();
                 if text.is_empty() {
                     self.error_msg = Some("Enter a name for the session.".into());
                 } else if text.chars().any(|c| "\\/:*?\"<>|".contains(c)) {
                     self.error_msg = Some("A session name cannot contain any of these characters:\n\\ / : * ? \" < > |".into());
-                } else if self.settings.sessions.iter().any(|s| s.folder == folder && s.display_name().eq_ignore_ascii_case(&text)) {
-                    self.error_msg = Some(format!("A session named \"{text}\" already exists in this folder."));
+                } else if self
+                    .settings
+                    .sessions
+                    .iter()
+                    .any(|s| s.folder == folder && s.display_name().eq_ignore_ascii_case(&text))
+                {
+                    self.error_msg = Some(format!(
+                        "A session named \"{text}\" already exists in this folder."
+                    ));
                 } else if let Some(mut c) = self.settings.sessions.get(i).cloned() {
                     c.name = text;
                     self.settings.sessions.insert(i + 1, c);
@@ -5772,13 +7660,22 @@ impl YettyApp {
                 }
             }
             Prompt::RenameSession(i) => {
-                let folder = self.settings.sessions.get(i).map(|s| s.folder.clone()).unwrap_or_default();
+                let folder = self
+                    .settings
+                    .sessions
+                    .get(i)
+                    .map(|s| s.folder.clone())
+                    .unwrap_or_default();
                 if text.is_empty() {
                     self.error_msg = Some("Enter a name for the session.".into());
                 } else if text.chars().any(|c| "\\/:*?\"<>|".contains(c)) {
                     self.error_msg = Some("A session name cannot contain any of these characters:\n\\ / : * ? \" < > |".into());
-                } else if self.settings.sessions.iter().enumerate().any(|(k, s)| k != i && s.folder == folder && s.display_name().eq_ignore_ascii_case(&text)) {
-                    self.error_msg = Some(format!("A session named \"{text}\" already exists in this folder."));
+                } else if self.settings.sessions.iter().enumerate().any(|(k, s)| {
+                    k != i && s.folder == folder && s.display_name().eq_ignore_ascii_case(&text)
+                }) {
+                    self.error_msg = Some(format!(
+                        "A session named \"{text}\" already exists in this folder."
+                    ));
                 } else if let Some(s) = self.settings.sessions.get_mut(i) {
                     s.name = text;
                     self.dirty = true;
@@ -5809,7 +7706,8 @@ impl YettyApp {
             }
             Prompt::SnapshotName => {
                 if !text.is_empty() {
-                    let cfgs: Vec<SessionConfig> = self.sessions.iter().map(|s| s.cfg.clone()).collect();
+                    let cfgs: Vec<SessionConfig> =
+                        self.sessions.iter().map(|s| s.cfg.clone()).collect();
                     self.settings.snapshots.retain(|e| e.0 != text);
                     self.settings.snapshots.push((text.clone(), cfgs));
                     self.last_snapshot = Some(text);
@@ -5828,7 +7726,12 @@ impl YettyApp {
                     let mut cfg = self.sessions[i].cfg.clone();
                     cfg.name = name.clone();
                     // a saved session of that name (in the root folder) is replaced, as Save Session does
-                    match self.settings.sessions.iter().position(|x| x.name == name && x.folder.trim_matches('/').is_empty()) {
+                    match self
+                        .settings
+                        .sessions
+                        .iter()
+                        .position(|x| x.name == name && x.folder.trim_matches('/').is_empty())
+                    {
                         Some(k) => {
                             cfg.folder = self.settings.sessions[k].folder.clone();
                             self.settings.sessions[k] = cfg;
@@ -5872,7 +7775,14 @@ impl YettyApp {
             Prompt::ConvertKey => config::open_console(&format!("ssh-keygen -p -o -f \"{text}\"")),
             Prompt::NewButtonBar => {
                 let name = text.trim().to_string();
-                if name.is_empty() || name.eq_ignore_ascii_case("default") || self.settings.button_bars.iter().any(|b| b.0.eq_ignore_ascii_case(&name)) {
+                if name.is_empty()
+                    || name.eq_ignore_ascii_case("default")
+                    || self
+                        .settings
+                        .button_bars
+                        .iter()
+                        .any(|b| b.0.eq_ignore_ascii_case(&name))
+                {
                     self.status_msg = "Enter a name that is not used by another button bar.".into();
                 } else {
                     self.settings.button_bars.push((name.clone(), Vec::new()));
@@ -5882,14 +7792,17 @@ impl YettyApp {
                     self.dirty = true;
                 }
             }
-            Prompt::TftpFolder => match crate::tftp::TftpServer::start("0.0.0.0:69", std::path::PathBuf::from(&text)) {
-                Ok(s) => {
-                    self.tftp = Some(s);
-                    self.tftp_open = true;
-                    self.status_msg = "TFTP server started".into();
+            Prompt::TftpFolder => {
+                match crate::tftp::TftpServer::start("0.0.0.0:69", std::path::PathBuf::from(&text))
+                {
+                    Ok(s) => {
+                        self.tftp = Some(s);
+                        self.tftp_open = true;
+                        self.status_msg = "TFTP server started".into();
+                    }
+                    Err(e) => self.status_msg = e,
                 }
-                Err(e) => self.status_msg = e,
-            },
+            }
             Prompt::CredPassword(i) => {
                 if let Some(c) = self.settings.credentials.get_mut(i) {
                     c.pass = config::protect(&text);
@@ -5931,10 +7844,15 @@ impl YettyApp {
     }
 
     fn screenshot_step(&mut self, ctx: &egui::Context) {
-        let Some(path) = self.screenshot.clone() else { return };
+        let Some(path) = self.screenshot.clone() else {
+            return;
+        };
         self.frames += 1;
         ctx.request_repaint();
-        let wanted = std::env::var("YETTY_SHOT_FRAMES").ok().and_then(|v| v.parse().ok()).unwrap_or(120u32);
+        let wanted = std::env::var("YETTY_SHOT_FRAMES")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(120u32);
         if self.frames >= wanted && !self.shot_requested {
             self.shot_requested = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
@@ -5954,7 +7872,9 @@ impl YettyApp {
             if let Some(parent) = std::path::Path::new(&path).parent() {
                 let _ = std::fs::create_dir_all(parent);
             }
-            if let Err(e) = image::save_buffer(&path, &bytes, w as u32, h as u32, image::ColorType::Rgba8) {
+            if let Err(e) =
+                image::save_buffer(&path, &bytes, w as u32, h as u32, image::ColorType::Rgba8)
+            {
                 eprintln!("could not save screenshot: {e}");
             }
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -5977,7 +7897,11 @@ impl eframe::App for YettyApp {
             }
         }
         // The window's own close button: ask first while a session is connected.
-        if self.screenshot.is_none() && !self.exit_ok && self.connected_count() > 0 && ctx.input(|i| i.viewport().close_requested()) {
+        if self.screenshot.is_none()
+            && !self.exit_ok
+            && self.connected_count() > 0
+            && ctx.input(|i| i.viewport().close_requested())
+        {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             self.request_exit(ctx);
         }
@@ -6011,7 +7935,11 @@ impl eframe::App for YettyApp {
         // window title: "<tab> - Yetty", or "not connected - Yetty"; Global Options > Appearance > Advanced >
         // Application Window > "Title bar:" replaces the program name
         let g = &self.settings.global;
-        let app_name = if g.title_bar_on && !g.title_bar.trim().is_empty() { g.title_bar.trim().to_string() } else { "Yetty".to_string() };
+        let app_name = if g.title_bar_on && !g.title_bar.trim().is_empty() {
+            g.title_bar.trim().to_string()
+        } else {
+            "Yetty".to_string()
+        };
         let title = match self.sessions.get(self.active) {
             Some(s) if s.is_connected() => format!("{} - {app_name}", s.title),
             _ => format!("not connected - {app_name}"),
@@ -6035,7 +7963,11 @@ impl eframe::App for YettyApp {
         ctx.input_mut(|i| {
             let mut after_alt = false;
             i.events.retain(|e| match e {
-                egui::Event::Key { pressed: true, modifiers, .. } => {
+                egui::Event::Key {
+                    pressed: true,
+                    modifiers,
+                    ..
+                } => {
                     after_alt = modifiers.alt && !modifiers.ctrl;
                     true
                 }
@@ -6048,7 +7980,11 @@ impl eframe::App for YettyApp {
         });
         // Global Options > Terminal > "Exit when last session is disconnected"
         let any_connected = self.sessions.iter().any(|s| s.is_connected());
-        if self.settings.global.exit_on_last_disconnect && self.was_connected && !any_connected && self.screenshot.is_none() {
+        if self.settings.global.exit_on_last_disconnect
+            && self.was_connected
+            && !any_connected
+            && self.screenshot.is_none()
+        {
             self.exit_ok = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
@@ -6064,11 +8000,21 @@ impl eframe::App for YettyApp {
             && !egui::Popup::is_any_open(&ctx)
             && !ctx.text_edit_focused()
             && !self.sm_hover
-            && ctx.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Text(_) | egui::Event::Key { pressed: true, .. })))
+            && ctx.input(|i| {
+                i.events.iter().any(|e| {
+                    matches!(
+                        e,
+                        egui::Event::Text(_) | egui::Event::Key { pressed: true, .. }
+                    )
+                })
+            })
         {
             if let Some(f) = ctx.memory(|m| m.focused()) {
                 if !self.focus_terminal {
-                    let is_term = self.sessions.iter().any(|s| egui::Id::new(("terminal", s.id)) == f);
+                    let is_term = self
+                        .sessions
+                        .iter()
+                        .any(|s| egui::Id::new(("terminal", s.id)) == f);
                     if !is_term {
                         ctx.memory_mut(|m| m.surrender_focus(f));
                         self.focus_terminal = true;
@@ -6083,31 +8029,69 @@ impl eframe::App for YettyApp {
             self.side = None;
         }
         let (dark, panel_fill, central_fill) = palette(&self.settings.theme);
-        let status_fill = if dark { Color32::from_gray(0x33) } else { panel_fill };
-        let bar_frame = egui::Frame::new().fill(panel_fill).inner_margin(egui::Margin::symmetric(6, 2));
+        let status_fill = if dark {
+            Color32::from_gray(0x33)
+        } else {
+            panel_fill
+        };
+        let bar_frame = egui::Frame::new()
+            .fill(panel_fill)
+            .inner_margin(egui::Margin::symmetric(6, 2));
         if self.settings.show_menu_bar {
-            egui::Panel::top("menu").frame(bar_frame).show_separator_line(false).show(ui, |ui| self.menu_bar(ui));
+            egui::Panel::top("menu")
+                .frame(bar_frame)
+                .show_separator_line(false)
+                .show(ui, |ui| self.menu_bar(ui));
         }
         if self.settings.show_toolbar {
-            egui::Panel::top("toolbar").frame(bar_frame).show_separator_line(false).show(ui, |ui| self.toolbar(ui));
+            egui::Panel::top("toolbar")
+                .frame(bar_frame)
+                .show_separator_line(false)
+                .show(ui, |ui| self.toolbar(ui));
         }
         if self.settings.show_status_bar {
-            egui::Panel::bottom("status").frame(bar_frame.fill(status_fill)).show_separator_line(false).show(ui, |ui| self.status_bar(ui));
+            egui::Panel::bottom("status")
+                .frame(bar_frame.fill(status_fill))
+                .show_separator_line(false)
+                .show(ui, |ui| self.status_bar(ui));
         }
         if self.settings.show_button_bar {
             // Global Options > Terminal > Appearance > "Show button bar on: bottom / top"
-            let panel = if self.settings.global.button_bar_top { egui::Panel::top("buttons") } else { egui::Panel::bottom("buttons") };
+            let panel = if self.settings.global.button_bar_top {
+                egui::Panel::top("buttons")
+            } else {
+                egui::Panel::bottom("buttons")
+            };
             panel.frame(bar_frame).show(ui, |ui| self.button_bar(ui));
         }
         if self.settings.show_command_window {
-            egui::Panel::bottom("command").frame(bar_frame.inner_margin(egui::Margin { left: 6, right: 2, top: 0, bottom: 2 })).show_separator_line(false).show(ui, |ui| self.command_window(ui));
+            egui::Panel::bottom("command")
+                .frame(bar_frame.inner_margin(egui::Margin {
+                    left: 6,
+                    right: 2,
+                    top: 0,
+                    bottom: 2,
+                }))
+                .show_separator_line(false)
+                .show(ui, |ui| self.command_window(ui));
         }
         if self.settings.show_hex_view {
-            egui::Panel::bottom("hex").frame(bar_frame.inner_margin(6)).show(ui, |ui| self.hex_view(ui));
+            egui::Panel::bottom("hex")
+                .frame(bar_frame.inner_margin(6))
+                .show(ui, |ui| self.hex_view(ui));
         }
         if self.settings.show_tabs && self.layout == Layout::Tabs && self.n_groups <= 1 {
             egui::Panel::bottom("groupbar")
-                .frame(egui::Frame::new().fill(panel_fill).inner_margin(egui::Margin { left: 12, right: 4, top: 4, bottom: 4 }))
+                .frame(
+                    egui::Frame::new()
+                        .fill(panel_fill)
+                        .inner_margin(egui::Margin {
+                            left: 12,
+                            right: 4,
+                            top: 4,
+                            bottom: 4,
+                        }),
+                )
                 .show_separator_line(false)
                 .show(ui, |ui| self.group_bar(ui));
         }
@@ -6115,7 +8099,11 @@ impl eframe::App for YettyApp {
             .exact_size(20.0)
             .resizable(false)
             .show_separator_line(false)
-            .frame(egui::Frame::new().fill(panel_fill).inner_margin(egui::Margin::symmetric(1, 0)))
+            .frame(
+                egui::Frame::new()
+                    .fill(panel_fill)
+                    .inner_margin(egui::Margin::symmetric(1, 0)),
+            )
             .show(ui, |ui| self.side_stripe(ui));
         // Auto Hide: while the panel is not pinned it floats over the session and goes away
         // as soon as the person clicks anywhere outside it (a menu or pop-up on top does not count).
@@ -6123,7 +8111,10 @@ impl eframe::App for YettyApp {
             let pressed = ctx.input(|i| i.pointer.primary_pressed());
             if pressed {
                 if let Some(p) = ctx.input(|i| i.pointer.interact_pos()) {
-                    let on_top = ctx.layer_id_at(p).map(|l| l.order != egui::Order::Background).unwrap_or(false);
+                    let on_top = ctx
+                        .layer_id_at(p)
+                        .map(|l| l.order != egui::Order::Background)
+                        .unwrap_or(false);
                     let stripe_rect = egui::Rect::from_min_max(
                         egui::pos2(0.0, ui.max_rect().min.y),
                         egui::pos2(22.0, ui.max_rect().max.y),
@@ -6176,21 +8167,39 @@ impl eframe::App for YettyApp {
         // In the original the tab bar belongs to the Tabs view: tiled and cascaded sessions have window title
         // bars instead. "Only show tabs when there are more than one" and "Tab location" come from Global Options.
         let g = &self.settings.global;
-        let tabs_wanted = self.settings.show_tabs && self.layout == Layout::Tabs && self.sessions.len() > usize::from(g.tabs_only_multiple);
+        let tabs_wanted = self.settings.show_tabs
+            && self.layout == Layout::Tabs
+            && self.sessions.len() > usize::from(g.tabs_only_multiple);
         let tab_bottom = g.tab_bottom;
         let grouped = self.layout == Layout::Tabs && self.n_groups > 1;
         if tabs_wanted && !grouped {
-            let frame = egui::Frame::new().fill(panel_fill).inner_margin(egui::Margin { left: 2, right: 2, top: 3, bottom: if tab_bottom { 3 } else { 0 } });
-            let panel = if tab_bottom { egui::Panel::bottom("tabs") } else { egui::Panel::top("tabs") };
-            panel.frame(frame).show_separator_line(false).show(ui, |ui| self.tabs(ui, None));
-        }
-        egui::CentralPanel::default().frame(egui::Frame::new().fill(central_fill)).show(ui, |ui| {
-            if grouped {
-                self.group_area(ui, tabs_wanted);
+            let frame = egui::Frame::new()
+                .fill(panel_fill)
+                .inner_margin(egui::Margin {
+                    left: 2,
+                    right: 2,
+                    top: 3,
+                    bottom: if tab_bottom { 3 } else { 0 },
+                });
+            let panel = if tab_bottom {
+                egui::Panel::bottom("tabs")
             } else {
-                self.terminal_area(ui);
-            }
-        });
+                egui::Panel::top("tabs")
+            };
+            panel
+                .frame(frame)
+                .show_separator_line(false)
+                .show(ui, |ui| self.tabs(ui, None));
+        }
+        egui::CentralPanel::default()
+            .frame(egui::Frame::new().fill(central_fill))
+            .show(ui, |ui| {
+                if grouped {
+                    self.group_area(ui, tabs_wanted);
+                } else {
+                    self.terminal_area(ui);
+                }
+            });
 
         self.dialogs(&ctx);
         self.screenshot_step(&ctx);
@@ -6199,7 +8208,8 @@ impl eframe::App for YettyApp {
     fn on_exit(&mut self) {
         // Auto Session > "Remember and connect to sessions from last use"
         if self.settings.global.auto_session == 2 {
-            self.settings.global.last_sessions = self.sessions.iter().map(|s| s.cfg.clone()).collect();
+            self.settings.global.last_sessions =
+                self.sessions.iter().map(|s| s.cfg.clone()).collect();
         }
         if self.screenshot.is_none() && self.settings.auto_save {
             self.settings.save();
@@ -6215,6 +8225,9 @@ mod tests {
     fn logical_order_compares_numbers_by_value() {
         let mut names = vec!["host10", "Host2", "host02b", "host1", "alpha", "host2"];
         names.sort_by(|a, b| natural_cmp(a, b));
-        assert_eq!(names, ["alpha", "host1", "Host2", "host2", "host02b", "host10"]);
+        assert_eq!(
+            names,
+            ["alpha", "host1", "Host2", "host2", "host02b", "host10"]
+        );
     }
 }

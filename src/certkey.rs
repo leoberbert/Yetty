@@ -6,11 +6,21 @@ const B64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz012
 pub fn base64_encode(data: &[u8]) -> String {
     let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
     for chunk in data.chunks(3) {
-        let n = (chunk[0] as u32) << 16 | (*chunk.get(1).unwrap_or(&0) as u32) << 8 | *chunk.get(2).unwrap_or(&0) as u32;
+        let n = (chunk[0] as u32) << 16
+            | (*chunk.get(1).unwrap_or(&0) as u32) << 8
+            | *chunk.get(2).unwrap_or(&0) as u32;
         out.push(B64[(n >> 18) as usize & 63] as char);
         out.push(B64[(n >> 12) as usize & 63] as char);
-        out.push(if chunk.len() > 1 { B64[(n >> 6) as usize & 63] as char } else { '=' });
-        out.push(if chunk.len() > 2 { B64[n as usize & 63] as char } else { '=' });
+        out.push(if chunk.len() > 1 {
+            B64[(n >> 6) as usize & 63] as char
+        } else {
+            '='
+        });
+        out.push(if chunk.len() > 2 {
+            B64[n as usize & 63] as char
+        } else {
+            '='
+        });
     }
     out
 }
@@ -176,8 +186,11 @@ fn certificate_der(path: &str) -> Result<Vec<u8>, String> {
     if let Ok(text) = std::str::from_utf8(&bytes) {
         if let Some(start) = text.find("-----BEGIN CERTIFICATE-----") {
             let body = &text[start + "-----BEGIN CERTIFICATE-----".len()..];
-            let end = body.find("-----END CERTIFICATE-----").ok_or("The certificate file is incomplete.")?;
-            return base64_decode(&body[..end]).ok_or_else(|| "The certificate file is not valid base64.".to_string());
+            let end = body
+                .find("-----END CERTIFICATE-----")
+                .ok_or("The certificate file is incomplete.")?;
+            return base64_decode(&body[..end])
+                .ok_or_else(|| "The certificate file is not valid base64.".to_string());
         }
     }
     if bytes.first() == Some(&0x30) {
@@ -191,7 +204,10 @@ pub fn public_key_from_certificate(path: &str) -> Result<String, String> {
     let der = certificate_der(path)?;
     let spki = spki_of_certificate(&der).ok_or("The file does not contain a valid certificate.")?;
     let (alg, blob) = ssh_blob(spki)?;
-    let comment = std::path::Path::new(path).file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let comment = std::path::Path::new(path)
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
     Ok(format!("{alg} {} {comment}", base64_encode(&blob)))
 }
 
@@ -213,7 +229,13 @@ mod tests {
     }
 
     fn expected(file: &str) -> String {
-        std::fs::read_to_string(format!("{}/src/testdata/{file}", env!("CARGO_MANIFEST_DIR"))).unwrap().trim().to_string()
+        std::fs::read_to_string(format!(
+            "{}/src/testdata/{file}",
+            env!("CARGO_MANIFEST_DIR")
+        ))
+        .unwrap()
+        .trim()
+        .to_string()
     }
 
     #[test]
@@ -231,7 +253,10 @@ mod tests {
     #[test]
     fn ed25519_certificate_is_an_ssh_ed25519_key() {
         let got = line_for("ed.crt");
-        assert!(got.starts_with("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI"), "{got}");
+        assert!(
+            got.starts_with("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI"),
+            "{got}"
+        );
     }
 
     #[test]

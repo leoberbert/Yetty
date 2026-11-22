@@ -70,10 +70,17 @@ fn wide(s: &str) -> Vec<u16> {
 }
 
 #[cfg(windows)]
-fn file_dialog(title: &str, start_dir: Option<&str>, save: bool, filter_spec: &str) -> Option<String> {
+fn file_dialog(
+    title: &str,
+    start_dir: Option<&str>,
+    save: bool,
+    filter_spec: &str,
+) -> Option<String> {
     use win::*;
     let title_w = wide(title);
-    let dir_w = start_dir.filter(|d| std::path::Path::new(d).is_dir()).map(wide);
+    let dir_w = start_dir
+        .filter(|d| std::path::Path::new(d).is_dir())
+        .map(wide);
     // "All files (*.*)" filter: pairs of NUL-terminated strings, ended by an extra NUL
     let filter: Vec<u16> = filter_spec.encode_utf16().collect();
     let mut buf = vec![0u16; 4096];
@@ -89,7 +96,10 @@ fn file_dialog(title: &str, start_dir: Option<&str>, save: bool, filter_spec: &s
         max_file: buf.len() as u32,
         file_title: std::ptr::null_mut(),
         max_file_title: 0,
-        initial_dir: dir_w.as_ref().map(|d| d.as_ptr()).unwrap_or(std::ptr::null()),
+        initial_dir: dir_w
+            .as_ref()
+            .map(|d| d.as_ptr())
+            .unwrap_or(std::ptr::null()),
         title: title_w.as_ptr(),
         // OFN_EXPLORER | OFN_NOCHANGEDIR | OFN_PATHMUSTEXIST (+ OFN_FILEMUSTEXIST when opening)
         flags: 0x0008_0000 | 0x0000_0008 | 0x0000_0800 | if save { 0 } else { 0x0000_1000 },
@@ -103,7 +113,13 @@ fn file_dialog(title: &str, start_dir: Option<&str>, save: bool, filter_spec: &s
         reserved_dw: 0,
         flags_ex: 0,
     };
-    let ok = unsafe { if save { GetSaveFileNameW(&mut o) } else { GetOpenFileNameW(&mut o) } };
+    let ok = unsafe {
+        if save {
+            GetSaveFileNameW(&mut o)
+        } else {
+            GetOpenFileNameW(&mut o)
+        }
+    };
     if ok == 0 {
         return None;
     }

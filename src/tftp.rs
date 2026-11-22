@@ -63,16 +63,22 @@ impl TftpServer {
     pub fn start(addr: &str, root: PathBuf) -> Result<TftpServer, String> {
         std::fs::create_dir_all(&root).map_err(|e| format!("Could not use the folder: {e}"))?;
         let sock = UdpSocket::bind(addr).map_err(|e| format!("Could not listen on {addr}: {e}"))?;
-        sock.set_read_timeout(Some(Duration::from_millis(200))).map_err(|e| e.to_string())?;
+        sock.set_read_timeout(Some(Duration::from_millis(200)))
+            .map_err(|e| e.to_string())?;
         let port = sock.local_addr().map(|a| a.port()).unwrap_or(0);
         let stop = Arc::new(AtomicBool::new(false));
-        let log = Arc::new(Mutex::new(vec![format!("TFTP server listening on port {port}, folder {}", root.display())]));
+        let log = Arc::new(Mutex::new(vec![format!(
+            "TFTP server listening on port {port}, folder {}",
+            root.display()
+        )]));
         {
             let (stop, log, root) = (stop.clone(), log.clone(), root.clone());
             std::thread::spawn(move || {
                 let mut buf = [0u8; 1024];
                 while !stop.load(Ordering::Relaxed) {
-                    let Ok((n, peer)) = sock.recv_from(&mut buf) else { continue };
+                    let Ok((n, peer)) = sock.recv_from(&mut buf) else {
+                        continue;
+                    };
                     if n < 4 {
                         continue;
                     }
@@ -94,7 +100,12 @@ impl TftpServer {
                 say(&log, "TFTP server stopped".into());
             });
         }
-        Ok(TftpServer { stop, log, port, root })
+        Ok(TftpServer {
+            stop,
+            log,
+            port,
+            root,
+        })
     }
 
     pub fn stop(&self) {
@@ -103,15 +114,27 @@ impl TftpServer {
 }
 
 fn transfer_socket(peer: SocketAddr) -> Option<UdpSocket> {
-    let bind = if peer.is_ipv4() { "0.0.0.0:0" } else { "[::]:0" };
+    let bind = if peer.is_ipv4() {
+        "0.0.0.0:0"
+    } else {
+        "[::]:0"
+    };
     let s = UdpSocket::bind(bind).ok()?;
     s.set_read_timeout(Some(Duration::from_secs(1))).ok()?;
     s.connect(peer).ok()?;
     Some(s)
 }
 
-fn serve_read(peer: SocketAddr, name: &str, root: &Path, log: &Arc<Mutex<Vec<String>>>, stop: &AtomicBool) {
-    let Some(sock) = transfer_socket(peer) else { return };
+fn serve_read(
+    peer: SocketAddr,
+    name: &str,
+    root: &Path,
+    log: &Arc<Mutex<Vec<String>>>,
+    stop: &AtomicBool,
+) {
+    let Some(sock) = transfer_socket(peer) else {
+        return;
+    };
     let Some(path) = safe_path(root, name) else {
         let _ = sock.send(&error_packet(2, "Access violation"));
         say(log, format!("Refused {name} from {}", peer.ip()));
@@ -136,22 +159,39 @@ fn serve_read(peer: SocketAddr, name: &str, root: &Path, log: &Arc<Mutex<Vec<Str
             }
             let mut r = [0u8; 64];
             if let Ok(len) = sock.recv(&mut r) {
-                if len >= 4 && u16::from_be_bytes([r[0], r[1]]) == ACK && u16::from_be_bytes([r[2], r[3]]) as usize == (n & 0xffff) {
+                if len >= 4
+                    && u16::from_be_bytes([r[0], r[1]]) == ACK
+                    && u16::from_be_bytes([r[2], r[3]]) as usize == (n & 0xffff)
+                {
                     acked = true;
                     break;
                 }
             }
         }
         if !acked {
-            say(log, format!("Transfer of {name} to {} timed out", peer.ip()));
+            say(
+                log,
+                format!("Transfer of {name} to {} timed out", peer.ip()),
+            );
             return;
         }
     }
-    say(log, format!("Sent {name} ({} bytes) to {}", data.len(), peer.ip()));
+    say(
+        log,
+        format!("Sent {name} ({} bytes) to {}", data.len(), peer.ip()),
+    );
 }
 
-fn serve_write(peer: SocketAddr, name: &str, root: &Path, log: &Arc<Mutex<Vec<String>>>, stop: &AtomicBool) {
-    let Some(sock) = transfer_socket(peer) else { return };
+fn serve_write(
+    peer: SocketAddr,
+    name: &str,
+    root: &Path,
+    log: &Arc<Mutex<Vec<String>>>,
+    stop: &AtomicBool,
+) {
+    let Some(sock) = transfer_socket(peer) else {
+        return;
+    };
     let Some(path) = safe_path(root, name) else {
         let _ = sock.send(&error_packet(2, "Access violation"));
         say(log, format!("Refused {name} from {}", peer.ip()));
@@ -181,7 +221,14 @@ fn serve_write(peer: SocketAddr, name: &str, root: &Path, log: &Arc<Mutex<Vec<St
                     tries = 0;
                     if n - 4 < BLOCK {
                         match std::fs::write(&path, &data) {
-                            Ok(()) => say(log, format!("Received {name} ({} bytes) from {}", data.len(), peer.ip())),
+                            Ok(()) => say(
+                                log,
+                                format!(
+                                    "Received {name} ({} bytes) from {}",
+                                    data.len(),
+                                    peer.ip()
+                                ),
+                            ),
                             Err(e) => say(log, format!("Could not save {name}: {e}")),
                         }
                         return;
@@ -194,7 +241,10 @@ fn serve_write(peer: SocketAddr, name: &str, root: &Path, log: &Arc<Mutex<Vec<St
             Err(_) => {
                 tries += 1;
                 if tries > 5 {
-                    say(log, format!("Transfer of {name} from {} timed out", peer.ip()));
+                    say(
+                        log,
+                        format!("Transfer of {name} from {} timed out", peer.ip()),
+                    );
                     return;
                 }
                 let _ = sock.send(&last_ack);
