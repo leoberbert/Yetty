@@ -8,6 +8,7 @@ const ZDLE: u8 = 0x18;
 
 const ZRQINIT: u8 = 0;
 const ZRINIT: u8 = 1;
+const ZSINIT: u8 = 2;
 const ZACK: u8 = 3;
 const ZFILE: u8 = 4;
 const ZSKIP: u8 = 5;
@@ -169,6 +170,7 @@ pub struct Zmodem {
     started: bool,
     sent_total: usize,
     rpos_sent: bool,
+    sinit: bool,
     batch_total: usize,
 }
 
@@ -196,6 +198,7 @@ impl Zmodem {
             started: false,
             sent_total: 0,
             rpos_sent: false,
+            sinit: false,
             batch_total: 0,
         }
     }
@@ -557,6 +560,10 @@ impl Zmodem {
         match item {
             Item::Header { typ, pos, c32 } => match (self.state, typ) {
                 (_, ZRQINIT) => out.extend(Zmodem::zrinit()),
+                (_, ZSINIT) => {
+                    self.sinit = true;
+                    self.want_sub = Some(c32);
+                }
                 (State::RWaitFile, ZFILE) => self.want_sub = Some(c32),
                 (State::RWaitData, ZFILE) => self.want_sub = Some(c32),
                 (State::RWaitData, ZDATA) => {
@@ -586,6 +593,11 @@ impl Zmodem {
                 (_, ZABORT) => self.fail("The sender aborted the transfer"),
                 _ => {}
             },
+            Item::Sub { ok, .. } if self.sinit => {
+                // the sender's attention string / flags (ZSINIT) are acknowledged and ignored
+                self.sinit = false;
+                out.extend(hex_header(if ok { ZACK } else { ZNAK }, 0));
+            }
             Item::Sub { data, end, ok } => match self.state {
                 State::RWaitFile => {
                     // the ZFILE info: name NUL size ...

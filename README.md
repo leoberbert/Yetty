@@ -288,7 +288,7 @@ Menu **Transfer**.
 - **Servidor TFTP** embutido, na porta UDP 69, com pasta escolhida pelo usuário. Útil para equipamentos que fazem boot por rede.
 - **SFTP**: navegar no servidor e transferir por arrastar e soltar de arquivos do Windows para a sessão.
 
-- **Kermit** e **Zmodem**, em envio e recebimento. No Zmodem há a **Zmodem Upload List** e o **Start Zmodem Upload**, que executa antes o comando de upload da sessão (padrão `rz`). Um pedido `sz` do servidor inicia o download sozinho (desligável em Session Options). Testados em loopback; ainda não contra servidores reais.
+- **Kermit** e **Zmodem**, em envio e recebimento. No Zmodem há a **Zmodem Upload List** e o **Start Zmodem Upload**, que executa antes o comando de upload da sessão (padrão `rz`). Um pedido `sz` do servidor inicia o download sozinho (desligável em Session Options). Testados em loopback e contra `sz`/`rz` (lrzsz 0.12.21) e `gkermit` 2.01 reais, com arquivo de 200 000 bytes.
 
 ### Scripts e gravação
 
@@ -382,7 +382,7 @@ Quando a chave de identidade escolhida é recusada pelo servidor, abre a janela 
 
 Estes itens **não estão implementados**:
 
-- Kermit e Zmodem testados apenas em loopback.
+- Kermit e Zmodem testados em loopback e contra `gkermit`, `sz` e `rz` no WSL; não contra outros servidores (por exemplo C-Kermit).
 - SSH1.
 - TAPI.
 - Scripts em VBScript e Python.

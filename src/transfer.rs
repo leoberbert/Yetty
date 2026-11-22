@@ -630,3 +630,153 @@ mod tests {
         run_pair(Proto::Ymodem);
     }
 }
+
+/// Runs the engines against the real lrzsz / G-Kermit programs in WSL (`cargo test real_ -- --ignored --nocapture`).
+#[cfg(test)]
+mod real {
+    use super::*;
+    use std::io::{Read, Write};
+    use std::process::{Command, Stdio};
+    use std::sync::mpsc;
+
+    const TOOLS: &str = "$HOME/yt_tools/usr/bin";
+
+    fn wsl_path(p: &Path) -> String {
+        let s = p.to_string_lossy().replace('\\', "/");
+        format!("/mnt/{}{}", s[..1].to_lowercase(), &s[2..])
+    }
+
+    fn work(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("yetty_real_{name}"));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(d.join("in")).unwrap();
+        std::fs::create_dir_all(d.join("out")).unwrap();
+        d
+    }
+
+    fn payload() -> Vec<u8> {
+        (0..200_000u32).map(|i| (i.wrapping_mul(2654435761) >> 13) as u8).collect()
+    }
+
+    /// Start `cmd` (a shell line run in `dir` inside WSL) and let `t` talk to it until done.
+    fn drive(dir: &Path, cmd: &str, t: &mut Transfer) -> String {
+        let line = format!("cd '{}' && PATH={TOOLS}:$PATH {cmd}", wsl_path(dir));
+        let mut child = Command::new("wsl.exe").args(["-e", "sh", "-c", &line]).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
+        let mut stdin = child.stdin.take().unwrap();
+        let mut stdout = child.stdout.take().unwrap();
+        let mut stderr = child.stderr.take().unwrap();
+        let (tx, rx) = mpsc::channel::<Vec<u8>>();
+        std::thread::spawn(move || {
+            let mut b = [0u8; 4096];
+            while let Ok(n) = stdout.read(&mut b) {
+                if n == 0 || tx.send(b[..n].to_vec()).is_err() {
+                    break;
+                }
+            }
+        });
+        let (etx, erx) = mpsc::channel::<Vec<u8>>();
+        std::thread::spawn(move || {
+            let mut b = [0u8; 4096];
+            while let Ok(n) = stderr.read(&mut b) {
+                if n == 0 || etx.send(b[..n].to_vec()).is_err() {
+                    break;
+                }
+            }
+        });
+        let start = Instant::now();
+        let mut log = Vec::new();
+        let mut trace: Vec<String> = Vec::new();
+        while !t.done && start.elapsed() < Duration::from_secs(60) {
+            let mut out = t.tick();
+            if let Ok(d) = rx.recv_timeout(Duration::from_millis(20)) {
+                if trace.len() < 40 {
+                    trace.push(format!("<- {:?}", String::from_utf8_lossy(&d)));
+                }
+                out.extend(t.feed(&d));
+                while let Ok(d) = rx.try_recv() {
+                    out.extend(t.feed(&d));
+                }
+            }
+            if !out.is_empty() && trace.len() < 40 {
+                trace.push(format!("-> {:?}", String::from_utf8_lossy(&out)));
+            }
+            if !out.is_empty() && stdin.write_all(&out).and_then(|_| stdin.flush()).is_err() {
+                break;
+            }
+        }
+        // let the program finish, then collect its messages
+        drop(stdin);
+        std::thread::sleep(Duration::from_millis(500));
+        let _ = child.kill();
+        let _ = child.wait();
+        while let Ok(d) = erx.try_recv() {
+            log.extend(d);
+        }
+        format!("{} | {} | trace:\n{}", t.status, String::from_utf8_lossy(&log).trim(), trace.join("\n"))
+    }
+
+    fn check(name: &str, t: &Transfer, info: &str, out_file: &Path, want: &[u8]) {
+        let got = std::fs::read(out_file).unwrap_or_default();
+        println!("{name}: done={} failed={} bytes={} -> {}", t.done, t.failed, got.len(), info);
+        assert!(t.done && !t.failed, "{name}: {info}");
+        assert_eq!(got.len(), want.len(), "{name}: size");
+        assert!(got == want, "{name}: content differs");
+    }
+
+    #[test]
+    #[ignore]
+    fn real_zmodem_receive_from_sz() {
+        let d = work("sz");
+        let data = payload();
+        std::fs::write(d.join("in").join("file.bin"), &data).unwrap();
+        let mut t = Transfer::new_zmodem_receive(d.join("out"));
+        let info = drive(&d.join("in"), "sz -b file.bin", &mut t);
+        check("sz -> Yetty", &t, &info, &d.join("out").join("file.bin"), &data);
+    }
+
+    #[test]
+    #[ignore]
+    fn real_zmodem_receive_from_sz_escaped() {
+        let d = work("sze");
+        let data = payload();
+        std::fs::write(d.join("in").join("file.bin"), &data).unwrap();
+        let mut t = Transfer::new_zmodem_receive(d.join("out"));
+        let info = drive(&d.join("in"), "sz -b -e file.bin", &mut t);
+        check("sz -e -> Yetty", &t, &info, &d.join("out").join("file.bin"), &data);
+    }
+
+    #[test]
+    #[ignore]
+    fn real_zmodem_send_to_rz() {
+        let d = work("rz");
+        let data = payload();
+        let src = d.join("in").join("file.bin");
+        std::fs::write(&src, &data).unwrap();
+        let mut t = Transfer::new_zmodem_send(vec![src]).unwrap();
+        let info = drive(&d.join("out"), "rz -b -y", &mut t);
+        check("Yetty -> rz", &t, &info, &d.join("out").join("file.bin"), &data);
+    }
+
+    #[test]
+    #[ignore]
+    fn real_kermit_receive_from_gkermit() {
+        let d = work("gk_rx");
+        let data = payload();
+        std::fs::write(d.join("in").join("file.bin"), &data).unwrap();
+        let mut t = Transfer::new_kermit_receive(d.join("out"));
+        let info = drive(&d.join("in"), "script -qfec \"gkermit -i -s file.bin\" /dev/null", &mut t);
+        check("gkermit -> Yetty", &t, &info, &d.join("out").join("file.bin"), &data);
+    }
+
+    #[test]
+    #[ignore]
+    fn real_kermit_send_to_gkermit() {
+        let d = work("gk_tx");
+        let data = payload();
+        let src = d.join("in").join("file.bin");
+        std::fs::write(&src, &data).unwrap();
+        let mut t = Transfer::new_kermit_send(&src).unwrap();
+        let info = drive(&d.join("out"), "script -qfec \"gkermit -i -r\" /dev/null", &mut t);
+        check("Yetty -> gkermit", &t, &info, &d.join("out").join("file.bin"), &data);
+    }
+}

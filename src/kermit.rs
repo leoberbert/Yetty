@@ -202,7 +202,7 @@ impl Kermit {
         if self.last.elapsed() > Duration::from_secs(5) {
             self.last = Instant::now();
             self.retries += 1;
-            let limit = if self.state == State::Receiving && self.seq == 0 { 24 } else { 10 };
+            let limit = if self.state == State::Receiving && self.last_pkt.is_empty() { 24 } else { 10 };
             if self.retries > limit {
                 self.fail(if self.send { "The receiver did not respond" } else { "The sender did not respond" });
             } else if !self.last_pkt.is_empty() {
@@ -318,7 +318,7 @@ impl Kermit {
                     self.maxl = m.clamp(20, MAXL);
                 }
                 self.qbin = p.data.get(6).map(|&c| c == b'&' || c == b'Y').unwrap_or(false);
-                self.seq += 1;
+                self.seq = (self.seq + 1) % 64;
                 let mut name = Vec::new();
                 for &b in self.name.as_bytes() {
                     encode_byte(b, false, &mut name);
@@ -330,7 +330,7 @@ impl Kermit {
             }
             State::SFile | State::SData => {
                 self.bytes_done = self.pos;
-                self.seq += 1;
+                self.seq = (self.seq + 1) % 64;
                 if self.pos >= self.data.len() {
                     let pk = packet(self.seq, b'Z', &[]);
                     self.emit(out, pk);
@@ -343,7 +343,7 @@ impl Kermit {
                 }
             }
             State::SEof => {
-                self.seq += 1;
+                self.seq = (self.seq + 1) % 64;
                 let pk = packet(self.seq, b'B', &[]);
                 self.emit(out, pk);
                 self.state = State::SBreak;
@@ -388,10 +388,10 @@ impl Kermit {
                     self.maxl = (unchar(m) as usize).clamp(20, MAXL);
                 }
                 let mut params = our_params();
-                params[6] = if asks_8bit { b'Y' } else { b'N' };
+                params[6] = if asks_8bit { b'&' } else { b'N' };
                 let pk = packet(self.seq, b'Y', &params);
                 self.emit(out, pk);
-                self.seq += 1;
+                self.seq = (self.seq + 1) % 64;
             }
             b'F' => {
                 let raw = decode(&p.data, false);
@@ -403,7 +403,7 @@ impl Kermit {
                 self.status = "Receiving...".into();
                 let pk = packet(p.seq, b'Y', &[]);
                 self.emit(out, pk);
-                self.seq += 1;
+                self.seq = (self.seq + 1) % 64;
             }
             b'D' => {
                 let d = decode(&p.data, self.qbin);
@@ -412,7 +412,7 @@ impl Kermit {
                 self.total = self.total.max(self.bytes_done);
                 let pk = packet(p.seq, b'Y', &[]);
                 self.emit(out, pk);
-                self.seq += 1;
+                self.seq = (self.seq + 1) % 64;
             }
             b'Z' => {
                 let discard = p.data.first() == Some(&b'D');
@@ -426,7 +426,7 @@ impl Kermit {
                 self.out_file.clear();
                 let pk = packet(p.seq, b'Y', &[]);
                 self.emit(out, pk);
-                self.seq += 1;
+                self.seq = (self.seq + 1) % 64;
             }
             b'B' => {
                 out.extend_from_slice(&packet(p.seq, b'Y', &[]));
@@ -446,14 +446,15 @@ mod tests {
         let dir = std::env::temp_dir().join("yetty_kermit_test");
         let _ = std::fs::create_dir_all(&dir);
         let src = dir.join("source.bin");
-        let data: Vec<u8> = (0..5000u32).map(|i| (i * 13 % 256) as u8).collect();
+        // large enough for the 8-bit packet counter to pass 255 (sequence numbers wrap at 64)
+        let data: Vec<u8> = (0..60_000u32).map(|i| (i * 13 % 256) as u8).collect();
         std::fs::write(&src, &data).unwrap();
         let out_dir = dir.join("out");
         let mut tx = Kermit::new_send(&src).unwrap();
         let mut rx = Kermit::new_receive(out_dir.clone());
         let mut to_rx: Vec<u8> = tx.tick();
         let mut to_tx: Vec<u8> = Vec::new();
-        for _ in 0..5000 {
+        for _ in 0..50_000 {
             if !to_rx.is_empty() {
                 let b = std::mem::take(&mut to_rx);
                 to_tx.extend(rx.feed(&b));
@@ -504,5 +505,21 @@ mod tests {
         }
         assert!(tx.done && !tx.failed, "sender: {}", tx.status);
         assert_eq!(std::fs::read(out_dir.join("s.txt")).unwrap(), data);
+    }
+}
+
+#[cfg(test)]
+mod gk {
+    use super::*;
+
+    #[test]
+    fn answers_the_s_packet_of_g_kermit() {
+        let pkt: Vec<u8> = vec![
+            0x01, 0x39, 0x20, 0x53, 0x7e, 0x27, 0x20, 0x40, 0x2d, 0x23, 0x59, 0x33, 0x7e, 0x2a, 0x21, 0x4a, 0x2a, 0x30, 0x2b, 0x2b, 0x2b, 0x4a, 0x22, 0x55, 0x31, 0x41, 0x50, 0x0d,
+        ];
+        let mut rx = Kermit::new_receive(std::env::temp_dir().join("yetty_gk"));
+        let out = rx.feed(&pkt);
+        println!("reply: {:?}", String::from_utf8_lossy(&out));
+        assert!(out.len() > 4 && out[3] == b'Y', "no ACK: {out:?}");
     }
 }
