@@ -1223,6 +1223,13 @@ pub fn apply_theme(ctx: &egui::Context, theme: &str) {
     }
     v.window_shadow = egui::Shadow::NONE;
     v.popup_shadow = egui::Shadow::NONE;
+    // egui keeps separate dark/light styles and follows the OS theme by default; pin the one we style so a light
+    // Windows theme doesn't switch to an unstyled default light style
+    ctx.set_theme(if dark {
+        egui::Theme::Dark
+    } else {
+        egui::Theme::Light
+    });
     ctx.set_visuals(v);
     ctx.global_style_mut(|s| {
         use egui::{FontId, TextStyle};
