@@ -4820,10 +4820,11 @@ impl YettyApp {
                         if resp.drag_stopped() {
                             drop_tab = Some(pos);
                         }
-                        let fill = if selected {
-                            Color32::from_gray(0x3d)
-                        } else {
-                            Color32::from_gray(0x2e)
+                        let fill = match (ui.visuals().dark_mode, selected) {
+                            (true, true) => Color32::from_gray(0x3d),
+                            (true, false) => Color32::from_gray(0x2e),
+                            (false, true) => Color32::WHITE,
+                            (false, false) => Color32::from_gray(0xdc),
                         };
                         ui.painter().rect_filled(rect, 0.0, fill);
                         if selected {
@@ -5681,8 +5682,11 @@ impl YettyApp {
             let g = &self.settings.global;
             let tftp_on = self.tftp.is_some();
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let on = Color32::from_gray(235);
-                let off = Color32::from_gray(95);
+                let (on, off) = if ui.visuals().dark_mode {
+                    (Color32::from_gray(235), Color32::from_gray(95))
+                } else {
+                    (Color32::from_gray(20), Color32::from_gray(160))
+                };
                 if g.status_num {
                     ui.label(
                         RichText::new("NUM")
