@@ -12,6 +12,7 @@ mod keymapdlg;
 mod mnemonics;
 mod nativedlg;
 mod sftplist;
+mod sysfonts;
 mod term;
 mod tftp;
 mod transfer;
@@ -43,6 +44,11 @@ fn main() -> eframe::Result<()> {
         .with_title("Yetty")
         .with_inner_size([1180.0, 740.0])
         .with_min_inner_size([640.0, 400.0]);
+    // window class (X11) / app id (Wayland): matches yetty.desktop, so the shell shows the right icon
+    #[cfg(target_os = "linux")]
+    {
+        viewport = viewport.with_app_id("yetty");
+    }
     if let Ok(img) = image::load_from_memory(include_bytes!("../assets/yetty.png")) {
         let img = img.to_rgba8();
         viewport = viewport.with_icon(egui::IconData {

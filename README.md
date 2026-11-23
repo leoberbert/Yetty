@@ -21,6 +21,7 @@
 - [Visão geral](#visão-geral)
 - [Requisitos](#requisitos)
 - [Compilar e executar](#compilar-e-executar)
+- [Linux](#linux)
 - [Primeiros passos](#primeiros-passos)
 - [Telas](#telas)
 - [Funcionalidades](#funcionalidades)
@@ -76,6 +77,36 @@ cargo run
 cargo build --release
 # o executável fica em target/release/yetty.exe
 ```
+
+---
+
+## Linux
+
+A versão para Linux (branch `linux`) usa o mesmo código e a mesma interface do Windows. O estado de cada item está em [`PENDENCIAS.md`](PENDENCIAS.md), seção "Versão Linux".
+
+| Item | Detalhe |
+|---|---|
+| Sistema | Linux x64 com X11 ou Wayland e OpenGL (testado no Ubuntu 26.04, GNOME/Wayland). |
+| Compilação | Rust estável, `perl`, `make` e um compilador C (o OpenSSL é compilado junto, então não precisa de `libssl-dev`). |
+| Cliente SSH | `openssh-client` (`ssh`, `sftp`, `ssh-keygen`, `ssh-add`), procurados no `PATH`. |
+| Diálogos Abrir / Salvar / Pasta | Portal do desktop (`xdg-desktop-portal`, já presente no GNOME e no KDE). |
+| Opcionais | `lp` (CUPS) para imprimir; `xfreerdp`, `remmina` ou `rdesktop` para sessões RDP; um emulador de terminal (para Create Identity File e Convert Key). |
+| Serial | Dispositivos `/dev/ttyUSB0`, `/dev/ttyS0`... O usuário precisa estar no grupo `dialout`. |
+
+```bash
+cargo build --release
+# o executável fica em target/release/yetty
+```
+
+O que muda em relação ao Windows:
+
+- **Configurações** em `~/.config/yetty/settings.json` (ou `$XDG_CONFIG_HOME/yetty`).
+- **Senhas salvas** são cifradas com ChaCha20-Poly1305. A chave é um arquivo aleatório, `master.key` (permissão `0600`), na pasta de configurações; a passphrase de configuração entra na derivação da chave (PBKDF2-HMAC-SHA256). Quem copiar só o `settings.json` não lê as senhas. As senhas cifradas de um sistema não abrem no outro: ao levar o `settings.json` do Windows para o Linux, digite as senhas de novo.
+- **Shell local** usa `$SHELL` (ou `/bin/sh`) e começa na pasta pessoal.
+- **Fontes.** O Windows usa Consolas, Segoe UI e Segoe MDL2 Assets, que não podem ser distribuídos. No Linux o programa traz substitutos livres com as mesmas medidas: Selawik (as medidas do Segoe UI), uma fonte de ícones com os mesmos códigos do Segoe MDL2 Assets e Yetty Mono (a Hack com a largura de célula do Consolas). Para ter exatamente o visual do Windows, copie `consola.ttf`, `segoeui.ttf` e `segmdl2.ttf` para `~/.local/share/fonts` ou para `~/.config/yetty/fonts`: eles têm prioridade.
+- **Não existe no Linux:** transparência da janela (o item do menu View fica desabilitado) e a posição inicial da janela no Wayland (o compositor decide).
+
+Para gerar de novo as fontes embutidas: `tools/make-icons-font.py` e `tools/make-mono-font.py`. Licenças em `assets/fonts/`.
 
 ---
 
@@ -375,6 +406,7 @@ Quando a chave de identidade escolhida é recusada pelo servidor, abre a janela 
 - **Migração**: se existir a pasta `%APPDATA%\NexTerm` de uma versão anterior e ainda não existir `%APPDATA%\Yetty`, ela é renomeada automaticamente na primeira execução.
 - **Export/Import Settings** (menu **Tools**) permite levar a configuração para outro computador.
 - Se `APPDATA` não estiver definido, o Yetty usa a pasta temporária do sistema.
+- No Linux as configurações ficam em `~/.config/yetty` (veja a seção [Linux](#linux)).
 
 ---
 

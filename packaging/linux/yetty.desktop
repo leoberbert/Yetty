@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Yetty
+GenericName=Terminal
+Comment=SSH2, SFTP, Telnet, RLogin, raw TCP, serial and local shell sessions in one tabbed window
+Exec=yetty
+Icon=yetty
+Terminal=false
+Categories=Network;RemoteAccess;TerminalEmulator;
+Keywords=ssh;sftp;telnet;serial;terminal;
+StartupWMClass=yetty

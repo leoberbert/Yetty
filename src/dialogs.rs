@@ -372,7 +372,7 @@ fn auth_props_window_old(
                     }
                     ui.checkbox(&mut cfg.pubkey_agent, "Also try the keys loaded in ssh-agent");
                     if ui.button("Create Identity File...").clicked() {
-                        let _ = std::process::Command::new("cmd.exe").args(["/C", "start", "Yetty key generator", "cmd.exe", "/K", "ssh-keygen -t ed25519"]).spawn();
+                        crate::config::open_keygen_console();
                     }
                 }
                 "Password" | "Keyboard Interactive" => {
@@ -462,7 +462,7 @@ pub fn connection_form(
                             .show_ui(ui, |ui| {
                                 let mut ports = crate::conn::serial_ports();
                                 if ports.is_empty() {
-                                    ports = (1..=8).map(|i| format!("COM{i}")).collect();
+                                    ports = crate::conn::default_serial_ports();
                                 }
                                 for p in ports {
                                     ui.selectable_value(&mut cfg.com_port, p.clone(), p);
@@ -538,7 +538,11 @@ pub fn connection_form(
                 ui.add(
                     egui::TextEdit::singleline(&mut cfg.shell_command)
                         .desired_width(f32::INFINITY)
-                        .hint_text("cmd.exe (default)"),
+                        .hint_text(if cfg!(windows) {
+                            "cmd.exe (default)"
+                        } else {
+                            "your shell (default)"
+                        }),
                 );
             });
         }
@@ -1584,7 +1588,11 @@ fn page_body(ui: &mut egui::Ui, page: &str, d: &mut OptionsDlg, st: &mut Setting
                     ui.add(
                         egui::TextEdit::singleline(&mut d.cfg.known_hosts_file)
                             .desired_width(260.0)
-                            .hint_text("default: .ssh\\known_hosts"),
+                            .hint_text(if cfg!(windows) {
+                                "default: .ssh\\known_hosts"
+                            } else {
+                                "default: ~/.ssh/known_hosts"
+                            }),
                     );
                     if ui.button("...").on_hover_text("Browse").clicked() {
                         if let Some(p) = browse_file("Known hosts file", Some(&ssh_dir())) {

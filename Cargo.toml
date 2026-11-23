@@ -25,3 +25,15 @@ opt-level = 2
 
 [target.'cfg(windows)'.build-dependencies]
 winresource = "0.1"
+
+# Not Windows: saved passwords are encrypted with a random key kept in the settings folder (Windows uses DPAPI).
+[target.'cfg(not(windows))'.dependencies]
+chacha20poly1305 = "0.10"
+pbkdf2 = "0.12"
+sha2 = "0.10"
+
+# Linux: OpenSSL is compiled from source and linked statically, so the binary (and the AppImage)
+# needs no libssl on the machine. Windows keeps using Schannel through native-tls.
+[target.'cfg(target_os = "linux")'.dependencies]
+openssl = { version = "0.10", features = ["vendored"] }
+rfd = "0.18.0"

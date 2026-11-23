@@ -191,16 +191,7 @@ pub fn auth_props_window(
                     });
                     ui.horizontal(|ui| {
                         if ui.button("Create Identity File...").clicked() {
-                            let _ = std::process::Command::new("cmd.exe")
-                                .args([
-                                    "/C",
-                                    "start",
-                                    "Yetty key generator",
-                                    "cmd.exe",
-                                    "/K",
-                                    "ssh-keygen -t ed25519",
-                                ])
-                                .spawn();
+                            crate::config::open_keygen_console();
                         }
                         let key_path = if cfg.pubkey_use_global {
                             st.global_identity.clone()

@@ -1041,25 +1041,24 @@ fn session_menu(ui: &mut egui::Ui, c: &mut TreeCtx, i: usize) {
 }
 
 /// Characters the built-in fonts lack (check marks, arrows, Chinese / Japanese / Korean) come from the
-/// fonts Windows ships; they are added behind the built-in ones, so the look of normal text is unchanged.
+/// fonts the system ships (see `sysfonts.rs`); they are added behind the built-in ones, so the look of
+/// normal text is unchanged.
 fn install_fallback_fonts(ctx: &egui::Context) {
-    let windir = std::env::var("WINDIR").unwrap_or_else(|_| "C:\\Windows".into());
     let candidates = [
-        ("fb_mdl2", "segmdl2.ttf"),
-        ("fb_symbols", "seguisym.ttf"),
-        ("fb_cjk_sc", "msyh.ttc"),
-        ("fb_cjk_jp", "msgothic.ttc"),
-        ("fb_korean", "malgun.ttf"),
-        ("fb_cjk_tc", "msjh.ttc"),
+        "fb_mdl2",
+        "fb_symbols",
+        "fb_cjk_sc",
+        "fb_cjk_jp",
+        "fb_korean",
+        "fb_cjk_tc",
     ];
     let mut fonts = egui::FontDefinitions::default();
     // The original draws the session window in Consolas and its menus in Segoe UI.
-    for (name, file, fam) in [
-        ("win_consolas", "consola.ttf", egui::FontFamily::Monospace),
-        ("win_segoeui", "segoeui.ttf", egui::FontFamily::Proportional),
+    for (name, fam) in [
+        ("win_consolas", egui::FontFamily::Monospace),
+        ("win_segoeui", egui::FontFamily::Proportional),
     ] {
-        let path = std::path::Path::new(&windir).join("Fonts").join(file);
-        if let Ok(bytes) = std::fs::read(&path) {
+        if let Some(bytes) = crate::sysfonts::load(name) {
             fonts.font_data.insert(
                 name.to_string(),
                 std::sync::Arc::new(egui::FontData::from_owned(bytes)),
@@ -1070,9 +1069,8 @@ fn install_fallback_fonts(ctx: &egui::Context) {
         }
     }
     let mut added = Vec::new();
-    for (name, file) in candidates {
-        let path = std::path::Path::new(&windir).join("Fonts").join(file);
-        if let Ok(bytes) = std::fs::read(&path) {
+    for name in candidates {
+        if let Some(bytes) = crate::sysfonts::load(name) {
             fonts.font_data.insert(
                 name.to_string(),
                 std::sync::Arc::new(egui::FontData::from_owned(bytes)),
@@ -2080,10 +2078,11 @@ impl YettyApp {
         if cfg.protocol == Protocol::Rdp {
             // Remote Desktop: the Windows client runs in its own window.
             let port = if cfg.port == 0 { 3389 } else { cfg.port };
-            let mut c = std::process::Command::new("mstsc.exe");
-            c.arg(format!("/v:{}:{}", cfg.host.trim(), port));
-            self.status_msg = match c.spawn() {
-                Ok(_) => format!("Remote Desktop to {} started", cfg.host.trim()),
+            let host = cfg.host.trim();
+            self.status_msg = match crate::conn::rdp_command(host, port)
+                .and_then(|mut c| c.spawn().map_err(|e| e.to_string()))
+            {
+                Ok(_) => format!("Remote Desktop to {host} started"),
                 Err(e) => format!("Could not start Remote Desktop: {e}"),
             };
             return;
@@ -2190,7 +2189,12 @@ impl YettyApp {
     fn tool_create_public_key(&mut self, ctx: &egui::Context) {
         let mut cfg = self.settings.defaults_for(Protocol::LocalShell);
         cfg.name = "Create Public Key".into();
-        cfg.shell_command = "ssh-keygen.exe -t ed25519".into();
+        cfg.shell_command = if cfg!(windows) {
+            "ssh-keygen.exe -t ed25519"
+        } else {
+            "ssh-keygen -t ed25519"
+        }
+        .into();
         self.open_session(cfg, ctx);
     }
 
@@ -2198,7 +2202,13 @@ impl YettyApp {
     fn tool_manage_agent_keys(&mut self, ctx: &egui::Context) {
         let mut cfg = self.settings.defaults_for(Protocol::LocalShell);
         cfg.name = "Agent Keys".into();
-        cfg.shell_command = "cmd.exe /k ssh-add -l".into();
+        cfg.shell_command = if cfg!(windows) {
+            // cmd.exe keeps the tab open after ssh-add ends
+            "cmd.exe /k ssh-add -l"
+        } else {
+            "sh -c \"ssh-add -l; exec \\\"${SHELL:-sh}\\\"\""
+        }
+        .into();
         self.open_session(cfg, ctx);
     }
 
@@ -2309,7 +2319,12 @@ impl YettyApp {
         match p {
             Protocol::Serial => {
                 if let Some(x) = parts.first() {
-                    cfg.com_port = x.to_uppercase();
+                    // COM ports are written in capitals; a device file (/dev/ttyUSB0) keeps its case
+                    cfg.com_port = if x.starts_with('/') {
+                        x.to_string()
+                    } else {
+                        x.to_uppercase()
+                    };
                 }
                 if let Some(b) = parts.get(1).and_then(|b| b.parse().ok()) {
                     cfg.baud = b;
@@ -2904,11 +2919,11 @@ impl YettyApp {
             for s in &mut self.sessions {
                 s.capture_file = None;
             }
-            let _ = std::process::Command::new("notepad.exe")
-                .arg("/p")
-                .arg(&path)
-                .spawn();
-            self.status_msg = "Auto print finished: sent to the default printer".into();
+            let printed = config::print_file(&path);
+            self.status_msg = match printed {
+                Ok(()) => "Auto print finished: sent to the default printer".into(),
+                Err(e) => e,
+            };
         } else if let Some(s) = self.sessions.get_mut(self.active) {
             match s.start_capture(&path.to_string_lossy()) {
                 Ok(()) => {
@@ -2943,11 +2958,10 @@ impl YettyApp {
         let _ = std::fs::create_dir_all(&dir);
         let path = dir.join("print.txt");
         if std::fs::write(&path, text).is_ok() {
-            let _ = std::process::Command::new("notepad.exe")
-                .arg("/p")
-                .arg(&path)
-                .spawn();
-            self.status_msg = "Sent to the default printer".into();
+            self.status_msg = match config::print_file(&path) {
+                Ok(()) => "Sent to the default printer".into(),
+                Err(e) => e,
+            };
         }
     }
 
@@ -3515,7 +3529,7 @@ impl YettyApp {
                     });
                     ui.separator();
                     let mut tr = self.transparent;
-                    if mcheck(ui, &mut tr, "Window Transparency", true) {
+                    if mcheck(ui, &mut tr, "Window Transparency", cfg!(windows)) {
                         self.transparent = tr;
                         config::set_window_opacity(if tr { 200 } else { 255 });
                     }
@@ -3765,7 +3779,7 @@ impl YettyApp {
                     if mi(ui, "Edit...", "", true) {
                         ui.close();
                         if let Some(p) = crate::nativedlg::open_script("Select Script to Edit") {
-                            let _ = std::process::Command::new("notepad.exe").arg(&p).spawn();
+                            config::edit_file(&p);
                         }
                     }
                     if mi(ui, "Cancel", "", !self.scripts.is_empty()) {
@@ -4392,15 +4406,7 @@ impl YettyApp {
                             .chars()
                             .map(|c| if "<>:\"/\\|?*".contains(c) { '_' } else { c })
                             .collect();
-                        let script = format!(
-                            "$d=[Environment]::GetFolderPath('Desktop');$w=New-Object -ComObject WScript.Shell;$l=$w.CreateShortcut(\"$d\\{}.lnk\");$l.TargetPath='{}';$l.Arguments='--session \"{}\"';$l.Save()",
-                            name.replace('\'', "''"),
-                            exe.display().to_string().replace('\'', "''"),
-                            s.display_name().replace('\'', "''")
-                        );
-                        let _ = std::process::Command::new("powershell.exe")
-                            .args(["-NoProfile", "-WindowStyle", "Hidden", "-Command", &script])
-                            .spawn();
+                        config::create_desktop_shortcut(&name, &exe, &s.display_name());
                         self.status_msg = "Desktop shortcut created".into();
                     }
                 }
