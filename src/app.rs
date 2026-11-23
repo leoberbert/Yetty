@@ -5333,7 +5333,11 @@ impl YettyApp {
                 Pos2::new(full.max.x + 2.0, full.min.y + 5.0),
             ),
             0.0,
-            Color32::from_gray(0x3d),
+            if ui.visuals().dark_mode {
+                Color32::from_gray(0x3d)
+            } else {
+                Color32::from_gray(0xc8)
+            },
         );
         if box_focus {
             ui.painter().hline(
@@ -5384,8 +5388,19 @@ impl YettyApp {
         let mut menu_act: Option<&'static str> = None;
         let before = self.command_line.clone();
         let rect_resp = egui::Frame::new()
-            .fill(Color32::from_gray(0x38))
-            .stroke(egui::Stroke::new(1.0, Color32::from_gray(0x9a)))
+            .fill(if ui.visuals().dark_mode {
+                Color32::from_gray(0x38)
+            } else {
+                ui.visuals().extreme_bg_color
+            })
+            .stroke(egui::Stroke::new(
+                1.0,
+                if ui.visuals().dark_mode {
+                    Color32::from_gray(0x9a)
+                } else {
+                    Color32::from_gray(0x7a)
+                },
+            ))
             .show(ui, |ui| {
                 egui::ScrollArea::vertical()
                     .id_salt("cmd_scroll")
