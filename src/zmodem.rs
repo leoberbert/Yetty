@@ -183,6 +183,8 @@ pub struct Zmodem {
     sent_total: usize,
     rpos_sent: bool,
     sinit: bool,
+    /// The next subpacket is a retransmitted ZFILE info block, not file data.
+    dup_file: bool,
     batch_total: usize,
 }
 
@@ -211,6 +213,7 @@ impl Zmodem {
             sent_total: 0,
             rpos_sent: false,
             sinit: false,
+            dup_file: false,
             batch_total: 0,
         }
     }
@@ -605,7 +608,11 @@ impl Zmodem {
                     self.want_sub = Some(c32);
                 }
                 (State::RWaitFile, ZFILE) => self.want_sub = Some(c32),
-                (State::RWaitData, ZFILE) => self.want_sub = Some(c32),
+                (State::RWaitData, ZFILE) => {
+                    // the sender repeated ZFILE (our ZRPOS was slow): its info block is not data
+                    self.dup_file = true;
+                    self.want_sub = Some(c32);
+                }
                 (State::RWaitData, ZDATA) => {
                     if pos as usize == self.out_file.len() {
                         self.want_sub = Some(c32);
@@ -633,6 +640,9 @@ impl Zmodem {
                 (_, ZABORT) => self.fail("The sender aborted the transfer"),
                 _ => {}
             },
+            Item::Sub { .. } if self.dup_file => {
+                self.dup_file = false;
+            }
             Item::Sub { ok, .. } if self.sinit => {
                 // the sender's attention string / flags (ZSINIT) are acknowledged and ignored
                 self.sinit = false;

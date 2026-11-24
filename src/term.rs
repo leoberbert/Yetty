@@ -2961,16 +2961,30 @@ mod real_mouse {
         parser: vt100::Parser,
     }
 
-    fn wsl_path(p: &std::path::Path) -> String {
-        let s = p.to_string_lossy().replace('\\', "/");
-        format!("/mnt/{}{}", s[..1].to_lowercase(), &s[2..])
+    fn shell_path(p: &std::path::Path) -> String {
+        if cfg!(windows) {
+            let s = p.to_string_lossy().replace('\\', "/");
+            format!("/mnt/{}{}", s[..1].to_lowercase(), &s[2..])
+        } else {
+            p.to_string_lossy().into_owned()
+        }
+    }
+
+    /// Runs a shell line in WSL on Windows, directly elsewhere.
+    fn shell_cmd(line: &str) -> Command {
+        if cfg!(windows) {
+            let mut c = Command::new("wsl.exe");
+            c.args(["-e", "sh", "-c", line]);
+            c
+        } else {
+            let mut c = Command::new("sh");
+            c.args(["-c", line]);
+            c
+        }
     }
 
     fn wsl(cmd: &str) -> String {
-        let o = Command::new("wsl.exe")
-            .args(["-e", "sh", "-c", cmd])
-            .output()
-            .unwrap();
+        let o = shell_cmd(cmd).output().unwrap();
         String::from_utf8_lossy(&o.stdout).trim().to_string()
     }
 
@@ -2988,9 +3002,8 @@ mod real_mouse {
     impl Prog {
         /// `cmd` runs on a pty of 24x80 in `d`.
         fn start(d: &std::path::Path, cmd: &str) -> Prog {
-            let line = format!("cd '{}' && TERM=xterm-256color script -qfec \"stty rows 24 cols 80; {}\" /dev/null", wsl_path(d), cmd);
-            let mut child = Command::new("wsl.exe")
-                .args(["-e", "sh", "-c", &line])
+            let line = format!("cd '{}' && TERM=xterm-256color script -qfec \"stty rows 24 cols 80; {}\" /dev/null", shell_path(d), cmd);
+            let mut child = shell_cmd(&line)
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::null())

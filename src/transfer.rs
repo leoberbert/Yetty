@@ -720,9 +720,26 @@ mod real {
 
     const TOOLS: &str = "$HOME/yt_tools/usr/bin";
 
-    fn wsl_path(p: &Path) -> String {
-        let s = p.to_string_lossy().replace('\\', "/");
-        format!("/mnt/{}{}", s[..1].to_lowercase(), &s[2..])
+    /// Path as the shell that runs the program sees it (WSL on Windows, the host itself elsewhere).
+    fn shell_path(p: &Path) -> String {
+        if cfg!(windows) {
+            let s = p.to_string_lossy().replace('\\', "/");
+            format!("/mnt/{}{}", s[..1].to_lowercase(), &s[2..])
+        } else {
+            p.to_string_lossy().into_owned()
+        }
+    }
+
+    fn shell(line: &str) -> Command {
+        if cfg!(windows) {
+            let mut c = Command::new("wsl.exe");
+            c.args(["-e", "sh", "-c", line]);
+            c
+        } else {
+            let mut c = Command::new("sh");
+            c.args(["-c", line]);
+            c
+        }
     }
 
     fn work(name: &str) -> PathBuf {
@@ -741,9 +758,8 @@ mod real {
 
     /// Start `cmd` (a shell line run in `dir` inside WSL) and let `t` talk to it until done.
     fn drive(dir: &Path, cmd: &str, t: &mut Transfer) -> String {
-        let line = format!("cd '{}' && PATH={TOOLS}:$PATH {cmd}", wsl_path(dir));
-        let mut child = Command::new("wsl.exe")
-            .args(["-e", "sh", "-c", &line])
+        let line = format!("cd '{}' && PATH={TOOLS}:$PATH {cmd}", shell_path(dir));
+        let mut child = shell(&line)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
