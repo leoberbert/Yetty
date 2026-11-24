@@ -42,6 +42,8 @@ fn main() -> eframe::Result<()> {
         Some(connect.join(" "))
     };
 
+    #[cfg(target_os = "linux")]
+    config::integrate_appimage();
     let mut viewport = egui::ViewportBuilder::default()
         .with_title("Yetty")
         .with_inner_size([1180.0, 740.0])

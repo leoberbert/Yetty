@@ -1212,31 +1212,91 @@ pub fn edit_file(path: &str) {
     }
 }
 
+/// A value as a Desktop Entry `Exec` argument: double-quoted; `"`, `` ` ``, `$` and `\` take a backslash, `%` is doubled.
+#[cfg(not(windows))]
+fn desktop_quote(s: &str) -> String {
+    let mut q = String::from("\"");
+    for c in s.chars() {
+        match c {
+            '"' | '`' | '$' | '\\' => {
+                q.push('\\');
+                q.push(c);
+            }
+            '%' => q.push_str("%%"),
+            c => q.push(c),
+        }
+    }
+    q.push('"');
+    q
+}
+
 /// Contents of the `.desktop` shortcut that opens the saved session `session`.
-/// Exec arguments are double-quoted; `"`, `` ` ``, `$` and `\` take a backslash, `%` is doubled.
 #[cfg(not(windows))]
 fn desktop_entry(exe: &std::path::Path, session: &str) -> String {
-    let quote = |s: &str| {
-        let mut q = String::from("\"");
-        for c in s.chars() {
-            match c {
-                '"' | '`' | '$' | '\\' => {
-                    q.push('\\');
-                    q.push(c);
-                }
-                '%' => q.push_str("%%"),
-                c => q.push(c),
-            }
-        }
-        q.push('"');
-        q
-    };
     format!(
         "[Desktop Entry]\nType=Application\nName={}\nExec={} --session {}\nIcon=yetty\nTerminal=false\nCategories=Network;TerminalEmulator;\n",
         session.replace('\n', " "),
-        quote(&exe.to_string_lossy()),
-        quote(session),
+        desktop_quote(&exe.to_string_lossy()),
+        desktop_quote(session),
     )
+}
+
+/// Wayland takes a window's icon from the `.desktop` file whose name is the window's app id (`yetty`), never from
+/// the icon the program sets. An AppImage has no such file, so the first run from one installs `yetty.desktop` (its
+/// `Exec` pointing at the AppImage) and the icon in the user's data folder, and rewrites them if the AppImage moves.
+/// `YETTY_NO_INTEGRATION=1` turns this off.
+#[cfg(target_os = "linux")]
+pub fn integrate_appimage() {
+    if std::env::var_os("YETTY_NO_INTEGRATION").is_some() {
+        return;
+    }
+    let Some(app) = std::env::var_os("APPIMAGE").map(PathBuf::from) else {
+        return;
+    };
+    let share = std::env::var_os("XDG_DATA_HOME")
+        .filter(|p| !p.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| home_dir().map(|h| h.join(".local").join("share")));
+    if let Some(share) = share {
+        let _ = write_appimage_integration(&share, &app);
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn write_appimage_integration(
+    share: &std::path::Path,
+    app: &std::path::Path,
+) -> std::io::Result<()> {
+    let entry: String = include_str!("../packaging/linux/yetty.desktop")
+        .lines()
+        .map(|l| {
+            if l.starts_with("Exec=") {
+                format!("Exec={}", desktop_quote(&app.to_string_lossy()))
+            } else {
+                l.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n";
+    let apps = share.join("applications");
+    let desktop = apps.join("yetty.desktop");
+    if std::fs::read_to_string(&desktop).ok().as_deref() != Some(entry.as_str()) {
+        std::fs::create_dir_all(&apps)?;
+        std::fs::write(&desktop, entry)?;
+    }
+    let icon_dir = share
+        .join("icons")
+        .join("hicolor")
+        .join("256x256")
+        .join("apps");
+    let icon = icon_dir.join("yetty.png");
+    let png = include_bytes!("../assets/yetty.png");
+    if std::fs::read(&icon).ok().as_deref() != Some(&png[..]) {
+        std::fs::create_dir_all(&icon_dir)?;
+        std::fs::write(&icon, png)?;
+    }
+    Ok(())
 }
 
 /// A desktop shortcut that opens the saved session `session` in Yetty. Windows: a `.lnk` file made through
@@ -2008,6 +2068,28 @@ mod tests {
         }
         args.push(cur);
         assert_eq!(args, ["/opt/Yetty app/yetty", "--session", name]);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn appimage_integration_points_the_desktop_file_at_the_appimage_and_is_idempotent() {
+        let share = std::env::temp_dir().join("yetty_appimage_integration");
+        let _ = std::fs::remove_dir_all(&share);
+        let app = std::path::Path::new("/home/u/Apps/My Yetty.AppImage");
+        super::write_appimage_integration(&share, app).unwrap();
+        let d = share.join("applications").join("yetty.desktop");
+        let body = std::fs::read_to_string(&d).unwrap();
+        assert!(body.contains("Exec=\"/home/u/Apps/My Yetty.AppImage\"\n"));
+        assert!(body.contains("StartupWMClass=yetty") && body.contains("Icon=yetty"));
+        assert!(share.join("icons/hicolor/256x256/apps/yetty.png").is_file());
+        let before = std::fs::metadata(&d).unwrap().modified().unwrap();
+        super::write_appimage_integration(&share, app).unwrap();
+        assert_eq!(std::fs::metadata(&d).unwrap().modified().unwrap(), before);
+        // the AppImage moved: the Exec line follows
+        super::write_appimage_integration(&share, std::path::Path::new("/opt/y.AppImage")).unwrap();
+        assert!(std::fs::read_to_string(&d)
+            .unwrap()
+            .contains("Exec=\"/opt/y.AppImage\"\n"));
     }
 
     #[test]
