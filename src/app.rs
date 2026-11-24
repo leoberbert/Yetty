@@ -1577,11 +1577,13 @@ impl YettyApp {
         screenshot: Option<String>,
         connect: Option<String>,
     ) -> Self {
-        let mut settings = if screenshot.is_some() {
-            Settings::default()
-        } else {
-            Settings::load()
-        };
+        // screenshots start from defaults, unless YETTY_SHOT_LOAD_SETTINGS is set (a prepared settings.json)
+        let mut settings =
+            if screenshot.is_some() && std::env::var_os("YETTY_SHOT_LOAD_SETTINGS").is_none() {
+                Settings::default()
+            } else {
+                Settings::load()
+            };
         // Global Options > General "Save expanded folder state for session list" off: folders start closed
         if !settings.global.save_tree_state {
             settings.tree_open.clear();

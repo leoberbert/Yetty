@@ -1212,6 +1212,33 @@ pub fn edit_file(path: &str) {
     }
 }
 
+/// Contents of the `.desktop` shortcut that opens the saved session `session`.
+/// Exec arguments are double-quoted; `"`, `` ` ``, `$` and `\` take a backslash, `%` is doubled.
+#[cfg(not(windows))]
+fn desktop_entry(exe: &std::path::Path, session: &str) -> String {
+    let quote = |s: &str| {
+        let mut q = String::from("\"");
+        for c in s.chars() {
+            match c {
+                '"' | '`' | '$' | '\\' => {
+                    q.push('\\');
+                    q.push(c);
+                }
+                '%' => q.push_str("%%"),
+                c => q.push(c),
+            }
+        }
+        q.push('"');
+        q
+    };
+    format!(
+        "[Desktop Entry]\nType=Application\nName={}\nExec={} --session {}\nIcon=yetty\nTerminal=false\nCategories=Network;TerminalEmulator;\n",
+        session.replace('\n', " "),
+        quote(&exe.to_string_lossy()),
+        quote(session),
+    )
+}
+
 /// A desktop shortcut that opens the saved session `session` in Yetty. Windows: a `.lnk` file made through
 /// PowerShell; elsewhere: a `.desktop` file in the Desktop folder.
 pub fn create_desktop_shortcut(file_name: &str, exe: &std::path::Path, session: &str) {
@@ -1230,22 +1257,6 @@ pub fn create_desktop_shortcut(file_name: &str, exe: &std::path::Path, session: 
     #[cfg(not(windows))]
     {
         use std::os::unix::fs::PermissionsExt;
-        // Exec arguments are double-quoted; `"`, `` ` ``, `$` and `\` take a backslash, `%` is doubled
-        let quote = |s: &str| {
-            let mut q = String::from("\"");
-            for c in s.chars() {
-                match c {
-                    '"' | '`' | '$' | '\\' => {
-                        q.push('\\');
-                        q.push(c);
-                    }
-                    '%' => q.push_str("%%"),
-                    c => q.push(c),
-                }
-            }
-            q.push('"');
-            q
-        };
         let Some(home) = home_dir() else {
             return;
         };
@@ -1254,12 +1265,7 @@ pub fn create_desktop_shortcut(file_name: &str, exe: &std::path::Path, session: 
             .unwrap_or_else(|| home.join("Desktop"));
         let _ = std::fs::create_dir_all(&desktop);
         let path = desktop.join(format!("{file_name}.desktop"));
-        let body = format!(
-            "[Desktop Entry]\nType=Application\nName={}\nExec={} --session {}\nIcon=yetty\nTerminal=false\nCategories=Network;TerminalEmulator;\n",
-            session.replace('\n', " "),
-            quote(&exe.to_string_lossy()),
-            quote(session),
-        );
+        let body = desktop_entry(exe, session);
         if std::fs::write(&path, body).is_ok() {
             let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755));
         }
@@ -1979,6 +1985,31 @@ impl Settings {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(not(windows))]
+    #[test]
+    fn desktop_entry_exec_survives_hostile_session_names() {
+        let name = "a \"b\" $HOME `x` \\ 100%";
+        let body = super::desktop_entry(std::path::Path::new("/opt/Yetty app/yetty"), name);
+        let exec = body.lines().find_map(|l| l.strip_prefix("Exec=")).unwrap();
+        // undo the Desktop Entry quoting: \\ + char -> char, %% -> %
+        let mut args = Vec::new();
+        let (mut cur, mut inq, mut it) = (String::new(), false, exec.chars().peekable());
+        while let Some(c) = it.next() {
+            match c {
+                '"' => inq = !inq,
+                '\\' if inq => cur.push(it.next().unwrap()),
+                '%' if inq && it.peek() == Some(&'%') => {
+                    it.next();
+                    cur.push('%');
+                }
+                ' ' if !inq => args.push(std::mem::take(&mut cur)),
+                c => cur.push(c),
+            }
+        }
+        args.push(cur);
+        assert_eq!(args, ["/opt/Yetty app/yetty", "--session", name]);
+    }
+
     #[test]
     fn password_roundtrip() {
         let enc = super::protect("s3cret é");
