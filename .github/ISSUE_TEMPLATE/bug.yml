@@ -1,0 +1,97 @@
+name: Bug
+description: Algo não funciona como deveria (Windows ou Linux)
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Plataforma
+      options:
+        - Windows
+        - Linux
+        - Windows e Linux
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Versão do Yetty
+      description: Help > About, ou o nome do arquivo baixado (ex.: 0.1.3).
+      placeholder: "0.1.3"
+    validations:
+      required: true
+  - type: dropdown
+    id: package
+    attributes:
+      label: Como foi instalado
+      options:
+        - Windows zip (yetty.exe)
+        - Linux AppImage
+        - Compilado do código (cargo)
+        - Outro
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: Sistema
+      description: "Windows: versão/build (ex.: Windows 11 23H2). Linux: distribuição, ambiente gráfico e sessão (ex.: Ubuntu 26.04, GNOME, Wayland / CachyOS, KDE, X11)."
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Área
+      options:
+        - Terminal / teclado / mouse
+        - SSH / SFTP
+        - Telnet / Rlogin / Raw
+        - Serial
+        - Local Shell
+        - RDP
+        - Transferência (Zmodem / Kermit)
+        - Janela / tema / ícone / transparência
+        - Session Manager / opções / configurações
+        - Instalação / empacotamento / release
+        - Outra
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: O que acontece
+      description: Descreva o problema. Se puder, anexe captura de tela.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Como reproduzir
+      placeholder: |
+        1. ...
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: O que era esperado
+    validations:
+      required: true
+  - type: dropdown
+    id: other-platform
+    attributes:
+      label: Acontece na outra plataforma?
+      options:
+        - Não testei
+        - Sim
+        - Não
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs ou mensagens de erro
+      description: Saída do terminal onde o Yetty foi iniciado, mensagem da janela, trecho do log da sessão.
+      render: shell
