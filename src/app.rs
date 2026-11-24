@@ -3529,7 +3529,7 @@ impl YettyApp {
                     });
                     ui.separator();
                     let mut tr = self.transparent;
-                    if mcheck(ui, &mut tr, "Window Transparency", cfg!(windows)) {
+                    if mcheck(ui, &mut tr, "Window Transparency", true) {
                         self.transparent = tr;
                         config::set_window_opacity(if tr { 200 } else { 255 });
                     }
@@ -7917,6 +7917,10 @@ impl YettyApp {
     }
 }
 
+/// Window Transparency level (200/255, the value used on Windows).
+#[cfg(not(windows))]
+const OPACITY: f32 = 200.0 / 255.0;
+
 impl eframe::App for YettyApp {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         for s in &mut self.sessions {
@@ -8061,6 +8065,14 @@ impl eframe::App for YettyApp {
             self.side = None;
         }
         let (dark, panel_fill, central_fill) = palette(&self.settings.theme);
+        // translucent window: shapes drawn over each other would fade twice (see winalpha), so the terminal's own
+        // background is the only layer under it
+        #[cfg(not(windows))]
+        let central_fill = if self.transparent {
+            Color32::TRANSPARENT
+        } else {
+            central_fill
+        };
         let status_fill = if dark {
             Color32::from_gray(0x33)
         } else {
@@ -8235,6 +8247,19 @@ impl eframe::App for YettyApp {
 
         self.dialogs(&ctx);
         self.screenshot_step(&ctx);
+        #[cfg(not(windows))]
+        crate::winalpha::apply(&ctx, if self.transparent { OPACITY } else { 1.0 });
+    }
+
+    #[cfg(not(windows))]
+    fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
+        // the window has an alpha channel (see main.rs): opaque unless Window Transparency is on
+        if self.transparent {
+            [0.0; 4]
+        } else {
+            let c = visuals.panel_fill;
+            Color32::from_rgb(c.r(), c.g(), c.b()).to_normalized_gamma_f32()
+        }
     }
 
     fn on_exit(&mut self) {
