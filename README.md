@@ -5,11 +5,12 @@
 <h1 align="center">Yetty</h1>
 
 <p align="center">
-  Terminal e gerenciador de sessões para Windows: SSH2, SFTP, Telnet, RLogin, TCP cru, porta serial, shell local e RDP, em uma única janela com abas, painéis e scripts.
+  Terminal e gerenciador de sessões para Windows e Linux: SSH2, SFTP, Telnet, RLogin, TCP cru, porta serial, shell local e RDP, em uma única janela com abas, painéis e scripts.
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/plataforma-Windows-0078D6" alt="Windows">
+  <img src="https://img.shields.io/badge/plataforma-Linux-FCC624" alt="Linux">
   <img src="https://img.shields.io/badge/linguagem-Rust-DEA584" alt="Rust">
   <img src="https://img.shields.io/badge/licen%C3%A7a-MIT-green" alt="MIT">
 </p>
@@ -19,6 +20,7 @@
 ## Sumário
 
 - [Visão geral](#visão-geral)
+- [Download e instalação](#download-e-instalação)
 - [Requisitos](#requisitos)
 - [Compilar e executar](#compilar-e-executar)
 - [Linux](#linux)
@@ -39,19 +41,40 @@
 - [Configurações e dados](#configurações-e-dados)
 - [Limitações conhecidas](#limitações-conhecidas)
 - [Documentação de implementação](#documentação-de-implementação)
+- [Reportar um problema](#reportar-um-problema)
 - [Licença](#licença)
 
 ---
 
 ## Visão geral
 
-O Yetty reúne em uma só janela os clientes de terminal que normalmente ficam espalhados pelo Windows. Cada conexão é uma **sessão** salva em um gerenciador com pastas, e cada sessão aberta vira uma **aba** ou um **painel**. O programa é escrito em Rust, com a interface em [egui](https://github.com/emilk/egui) (via `eframe`) e emulação de terminal com `vt100`.
+O Yetty reúne em uma só janela os clientes de terminal que normalmente ficam espalhados pelo Windows e pelo Linux. Cada conexão é uma **sessão** salva em um gerenciador com pastas, e cada sessão aberta vira uma **aba** ou um **painel**. O programa é escrito em Rust, com a interface em [egui](https://github.com/emilk/egui) (via `eframe`) e emulação de terminal com `vt100`.
 
 Pontos de design:
 
-- **Usa as ferramentas do próprio Windows.** SSH e SFTP chamam o `ssh.exe` e o `sftp.exe` do OpenSSH instalado no sistema; o shell local usa ConPTY; RDP abre o `mstsc.exe`.
-- **Senhas salvas são cifradas com DPAPI**, ligadas ao usuário do Windows que as salvou.
+- **Usa as ferramentas do próprio sistema.** SSH e SFTP chamam o `ssh` e o `sftp` do OpenSSH instalado (`ssh.exe` no Windows). O shell local usa ConPTY no Windows e um pty no Linux. RDP abre o `mstsc.exe` no Windows e `xfreerdp`, `remmina` ou `rdesktop` no Linux.
+- **Senhas salvas são cifradas**: DPAPI no Windows, ligadas ao usuário que as salvou; ChaCha20-Poly1305 com uma chave local no Linux.
 - **Configurações em um único `settings.json`**, sem registro e sem instalador.
+- **O mesmo programa e o mesmo visual nas duas plataformas.** O que é específico de um sistema está nas seções Requisitos e Linux.
+
+---
+
+## Download e instalação
+
+Os arquivos ficam na página de [Releases](https://github.com/leoberbert/Yetty/releases). Cada versão traz um arquivo por plataforma, mais o `.sha256` correspondente.
+
+| Plataforma | Arquivo | Como usar |
+|---|---|---|
+| Windows 10/11 (x64) | `yetty-v<versão>-windows-x64.zip` | Descompacte e execute `yetty.exe`. Não há instalador. |
+| Linux x64 | `yetty-v<versão>-linux-x86_64.AppImage` | `chmod +x yetty-*.AppImage` e execute. |
+
+Conferir o download: `sha256sum -c yetty-*.sha256` (Linux) ou `Get-FileHash` (Windows).
+
+**AppImage (Linux)**
+
+- Gerado em um Ubuntu 22.04 (glibc 2.35): roda em distribuições dessa idade ou mais novas. Testado no Ubuntu 26.04 (GNOME) e no CachyOS (KDE Plasma), em Wayland; o programa também abre em X11 (testado fora do AppImage).
+- Sem FUSE instalado, execute com `APPIMAGE_EXTRACT_AND_RUN=1 ./yetty-*.AppImage`.
+- **Ícone no Wayland:** o ambiente só mostra o ícone do Yetty se existir um `yetty.desktop`. Na primeira execução o AppImage instala `~/.local/share/applications/yetty.desktop` e o ícone em `~/.local/share/icons/hicolor/256x256/apps/yetty.png`, e os atualiza se você mover o arquivo. Na primeira vez o dock pode ainda mostrar o ícone genérico: feche e abra de novo. Para desligar essa instalação, defina `YETTY_NO_INTEGRATION=1`. Para remover, apague esses dois arquivos.
 
 ---
 
@@ -59,7 +82,7 @@ Pontos de design:
 
 | Item | Detalhe |
 |---|---|
-| Sistema | Windows 10 ou 11 (x64) |
+| Sistema | Windows 10 ou 11 (x64). Linux: veja a seção [Linux](#linux). |
 | Cliente SSH | OpenSSH client do Windows (`ssh.exe`, `sftp.exe`, `ssh-keygen.exe`, `ssh-add.exe`). Vem como recurso opcional do Windows. |
 | Git for Windows | Opcional. Recomendado se você usa SFTP com permissões de arquivo completas. |
 | Compilação | Toolchain Rust estável com target MSVC (`x86_64-pc-windows-msvc`). |
@@ -82,12 +105,12 @@ cargo build --release
 
 ## Linux
 
-A versão para Linux (branch `linux`) usa o mesmo código e a mesma interface do Windows. O estado de cada item está em [`PENDENCIAS.md`](PENDENCIAS.md), seção "Versão Linux".
+A versão para Linux usa o mesmo código e a mesma interface do Windows. O estado de cada item está em [`PENDENCIAS.md`](PENDENCIAS.md), seções "Versão Linux" e "Laboratório CachyOS".
 
 | Item | Detalhe |
 |---|---|
-| Sistema | Linux x64 com X11 ou Wayland e OpenGL (testado no Ubuntu 26.04, GNOME/Wayland). |
-| Compilação | Rust estável, `perl`, `make` e um compilador C (o OpenSSL é compilado junto, então não precisa de `libssl-dev`). |
+| Sistema | Linux x64 com X11 ou Wayland e OpenGL. Testado no Ubuntu 26.04 (GNOME, Wayland e X11) e no CachyOS (KDE Plasma, Wayland). |
+| Compilação | Rust estável, `perl`, `make` e um compilador C (o OpenSSL é compilado junto, então não precisa de `libssl-dev`). Quem usa o AppImage não precisa compilar. |
 | Cliente SSH | `openssh-client` (`ssh`, `sftp`, `ssh-keygen`, `ssh-add`), procurados no `PATH`. |
 | Diálogos Abrir / Salvar / Pasta | Portal do desktop (`xdg-desktop-portal`, já presente no GNOME e no KDE). |
 | Opcionais | `lp` (CUPS) para imprimir; `xfreerdp`, `remmina` ou `rdesktop` para sessões RDP; um emulador de terminal (para Create Identity File e Convert Key). |
@@ -98,13 +121,17 @@ cargo build --release
 # o executável fica em target/release/yetty
 ```
 
+O AppImage é gerado por `packaging/linux/build-appimage.sh` (precisa do `appimagetool`).
+
 O que muda em relação ao Windows:
 
 - **Configurações** em `~/.config/yetty/settings.json` (ou `$XDG_CONFIG_HOME/yetty`).
 - **Senhas salvas** são cifradas com ChaCha20-Poly1305. A chave é um arquivo aleatório, `master.key` (permissão `0600`), na pasta de configurações; a passphrase de configuração entra na derivação da chave (PBKDF2-HMAC-SHA256). Quem copiar só o `settings.json` não lê as senhas. As senhas cifradas de um sistema não abrem no outro: ao levar o `settings.json` do Windows para o Linux, digite as senhas de novo.
 - **Shell local** usa `$SHELL` (ou `/bin/sh`) e começa na pasta pessoal.
 - **Fontes.** O Windows usa Consolas, Segoe UI e Segoe MDL2 Assets, que não podem ser distribuídos. No Linux o programa traz substitutos livres com as mesmas medidas: Selawik (as medidas do Segoe UI), uma fonte de ícones com os mesmos códigos do Segoe MDL2 Assets e Yetty Mono (a Hack com a largura de célula do Consolas). Para ter exatamente o visual do Windows, copie `consola.ttf`, `segoeui.ttf` e `segmdl2.ttf` para `~/.local/share/fonts` ou para `~/.config/yetty/fonts`: eles têm prioridade.
-- **Não existe no Linux:** transparência da janela (o item do menu View fica desabilitado) e a posição inicial da janela no Wayland (o compositor decide).
+- **Transparência da janela** (View > Window Transparency) funciona no Linux: a janela inteira, texto incluído, fica translúcida (verificado no KDE Plasma/Wayland).
+- **Teclado:** layout ABNT2 verificado byte a byte no KDE (letras, AltGr, teclas mortas, `ç`, Ctrl+letras, F1–F12 e setas).
+- **Limites no Linux:** a posição inicial da janela no Wayland é ignorada (o compositor decide); a janela só mostra o ícone do Yetty se houver um `yetty.desktop` (o AppImage cria um sozinho); Ctrl+V e Ctrl+X são colar e recortar e não chegam ao programa.
 
 Para gerar de novo as fontes embutidas: `tools/make-icons-font.py` e `tools/make-mono-font.py`. Licenças em `assets/fonts/`.
 
@@ -168,7 +195,7 @@ Ao colar um texto com mais de uma linha no terminal, o Yetty mostra o conteúdo 
 
 ### Senha SSH
 
-Quando o servidor pede senha, o Yetty pergunta antes de conectar. Marque **Save password** para guardá-la cifrada com DPAPI. **Skip** segue sem senha, para tentar outro método de autenticação.
+Quando o servidor pede senha, o Yetty pergunta antes de conectar. Marque **Save password** para guardá-la cifrada (DPAPI no Windows; chave local no Linux). **Skip** segue sem senha, para tentar outro método de autenticação.
 
 <p align="center">
   <img src="docs/images/senha-ssh.png" alt="Diálogo de senha SSH" width="70%">
@@ -258,15 +285,15 @@ Editor visual de mapeamento. Você escolhe a tecla (com Ctrl, Alt e Shift) e a f
 
 | Protocolo | Como funciona | Porta padrão |
 |---|---|---|
-| **SSH2** | Executa o `ssh.exe` do OpenSSH em uma aba. Suporta autenticação por chave pública, teclado interativo, senha e GSSAPI. | 22 |
+| **SSH2** | Executa o `ssh` (`ssh.exe` no Windows) do OpenSSH em uma aba. Suporta autenticação por chave pública, teclado interativo, senha e GSSAPI. | 22 |
 | **SFTP** | Sessão SFTP via `sftp.exe`. Ativada pela opção "SFTP session" dentro de SSH2. | 22 |
 | **Telnet** | Conexão TCP com negociação Telnet. | 23 |
 | **Telnet/TLS** | Telnet sobre TLS, com SChannel (`native-tls`). | 992 |
 | **RLogin** | Protocolo RLogin sobre TCP. | 513 |
 | **Raw** | TCP puro, sem negociação. | 23 |
-| **Serial** | Porta COM com baud, bits, paridade, stop bits e controle de fluxo. Padrão: 38400, 8N1, XON/XOFF. | — |
-| **Local Shell** | Shell do Windows (PowerShell, cmd ou outro) via ConPTY. | — |
-| **RDP** | Inicia o Remote Desktop (`mstsc.exe`) em janela própria. | 3389 |
+| **Serial** | Porta COM (Windows) ou `/dev/ttyUSB0`, `/dev/ttyS0`... (Linux, grupo `dialout`) com baud, bits, paridade, stop bits e controle de fluxo. Padrão: 38400, 8N1, XON/XOFF. | — |
+| **Local Shell** | Windows: PowerShell, cmd ou outro, via ConPTY. Linux: `$SHELL`, em um pty. | — |
+| **RDP** | Inicia um cliente de Remote Desktop em janela própria: `mstsc.exe` no Windows; `xfreerdp`, `remmina` ou `rdesktop` no Linux. | 3389 |
 
 Na linha de comando, o protocolo pode ser passado diretamente: `ssh`, `telnet`, `rlogin`, `raw` (ou `tcp`) e `local` (ou `shell`, `cmd`).
 
@@ -304,7 +331,7 @@ Cada sessão guarda protocolo, host, porta, usuário, método de autenticação,
 - Paleta ANSI editável em **Global Options > ANSI Color**.
 - Realce de palavras-chave: busca com `Alt+U`.
 - **Color Scheme Overrides Ansi Color** (opção de sessão, ligada como no `Default.ini` do SecureCRT): com um esquema em uso, as 16 cores ANSI são as da paleta do esquema (por exemplo Solarized Dark), e não as de Global Options > ANSI Color. O System Color Scheme usa a paleta Dark Pastel.
-- **Jump Scroll** e **Minimize Drawing While Jump Scrolling** (opções de sessão, ligadas como no original; Session Options > Emulation): a saída rápida é desenhada a cada 120 ms (250 ms com Minimize Drawing); a primeira saída depois de uma pausa, como o eco de uma tecla, aparece na hora.
+- **Jump Scroll** e **Minimize Drawing While Jump Scrolling** (opções de sessão, ligadas como no original; Session Options > Emulation): a saída em massa é desenhada a cada 120 ms (250 ms com Minimize Drawing); um trecho pequeno com nada retido, como o eco de uma tecla, aparece na hora (digitar não sofre atraso).
 - **Select an alternate keyboard emulation** (Session Options > Emulation): Default, Linux, SCOANSI, VT100, VT220, VT320, Wyse50, Wyse60, Xterm, Xterm R6, Xterm 216+, VShell, TVI910, TVI925 e TN3270, com os códigos de F1 a F12 dos arquivos `Keymaps` do SecureCRT. A opção Custom não existe.
 - **Mouse**: programas que pedem o mouse (vim, tmux) o recebem no padrão xterm; `Shift` mantém a seleção local (**Shift forces local mouse**). **Position cursor on click** move o cursor da linha de comando com um clique.
 - **Barra de rolagem horizontal** para terminais de tamanho fixo mais largos que a janela; `Shift`+roda rola de lado.
@@ -350,7 +377,7 @@ Menu **Tools**.
 - **Export Public Key from Certificate**: extrai a chave pública (RSA, ECDSA, Ed25519) de um certificado PEM, DER ou PFX/P12 para uma linha OpenSSH.
 - **Change Configuration Passphrase**: protege as senhas salvas com uma passphrase pedida ao iniciar o Yetty. Se for esquecida, as senhas salvas se perdem.
 
-Senhas salvas são cifradas com DPAPI e só podem ser lidas pelo mesmo usuário do Windows. Com passphrase, ela entra também na cifragem.
+Senhas salvas são cifradas (DPAPI no Windows, lidas só pelo mesmo usuário; ChaCha20-Poly1305 no Linux) e não passam de um sistema para o outro. Com passphrase, ela entra também na cifragem.
 
 Quando a chave de identidade escolhida é recusada pelo servidor, abre a janela **Public Key Authentication Failed**.
 
@@ -402,11 +429,10 @@ Quando a chave de identidade escolhida é recusada pelo servidor, abre a janela 
 
 ## Configurações e dados
 
-- **Configurações**: `%APPDATA%\Yetty\settings.json`. Sessões, comandos, opções e mapa de teclas ficam nesse arquivo.
+- **Configurações**: `%APPDATA%\Yetty\settings.json` no Windows e `~/.config/yetty/settings.json` no Linux. Sessões, comandos, opções e mapa de teclas ficam nesse arquivo.
 - **Migração**: se existir a pasta `%APPDATA%\NexTerm` de uma versão anterior e ainda não existir `%APPDATA%\Yetty`, ela é renomeada automaticamente na primeira execução.
 - **Export/Import Settings** (menu **Tools**) permite levar a configuração para outro computador.
 - Se `APPDATA` não estiver definido, o Yetty usa a pasta temporária do sistema.
-- No Linux as configurações ficam em `~/.config/yetty` (veja a seção [Linux](#linux)).
 
 ---
 
@@ -421,13 +447,21 @@ Estes itens **não estão implementados**:
 - Grupos de abas com funcionalidade parcial.
 - Teclado alternativo "Custom" e TN3270; a lista de sessões do menu Window não tem mnemônico.
 
-Telnet/TLS depende do SChannel do Windows e pode não aceitar todos os certificados de servidores antigos.
+Telnet/TLS depende do SChannel no Windows (e do OpenSSL embutido no Linux) e pode não aceitar todos os certificados de servidores antigos.
+
+No Linux, ainda sem teste em hardware: porta serial real, impressão (CUPS) e RDP. A versão do Windows depende do checklist em [`docs/CHECKLIST-WINDOWS.md`](docs/CHECKLIST-WINDOWS.md) a cada release.
 
 ---
 
 ## Documentação de implementação
 
 O arquivo [`MECHANICS.md`](MECHANICS.md) registra, em 36 rodadas, como cada recurso foi implementado e comparado com o comportamento do programa original que serviu de referência. Os itens não implementados estão descritos lá com o motivo.
+
+---
+
+## Reportar um problema
+
+Abra uma issue em <https://github.com/leoberbert/Yetty/issues/new/choose> e preencha o formulário de bug: ele pede plataforma (Windows ou Linux), versão, como foi instalado (zip, AppImage ou compilado), sistema (no Linux, distribuição, ambiente gráfico e Wayland ou X11), os passos e se acontece na outra plataforma. Roteiros de teste manual: [`docs/ROTEIRO-REGRESSAO-LINUX.md`](docs/ROTEIRO-REGRESSAO-LINUX.md) e [`docs/CHECKLIST-WINDOWS.md`](docs/CHECKLIST-WINDOWS.md).
 
 ---
 

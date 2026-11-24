@@ -42,9 +42,9 @@ Legenda: **Fechado** = implementado e verificado como indicado; **Estimado** = c
   - O limite de 24 tentativas na espera inicial passou a depender de não haver pacote enviado ainda, e não de `seq == 0` (que volta a ocorrer no meio da transferência).
   - A hipótese de eco do pty não se confirmou: o eco só repete o primeiro pacote S, sem efeito.
 
-## Versão Linux (branch `linux`)
+## Versão Linux
 
-Objetivo: o mesmo programa e o mesmo visual do Windows, sem quebrar o Windows. Todo código específico de sistema fica atrás de `#[cfg(windows)]` / `#[cfg(not(windows))]`; o comportamento do Windows não muda. Depois que tudo abaixo estiver fechado: empacotar (AppImage ou similar; veja L-20).
+Objetivo: o mesmo programa e o mesmo visual do Windows, sem quebrar o Windows (publicado desde a 0.1.3; a branch `linux` foi incorporada à `main`). Todo código específico de sistema fica atrás de `#[cfg(windows)]` / `#[cfg(not(windows))]`; o comportamento do Windows não muda. Depois que tudo abaixo estiver fechado: empacotar (AppImage ou similar; veja L-20).
 Verificado nesta máquina: Ubuntu 26.04, GNOME/Wayland, Rust 1.99. `cargo build`, `cargo test` (26 passam, 8 `#[ignore]` que dependem do WSL) e `cargo clippy --all-targets -D warnings` limpos no Linux; `cargo check --target x86_64-pc-windows-msvc --all-targets -D warnings` limpo (o Windows continua compilando, mas **não foi executado** aqui).
 Legenda: **Fechado** = feito e verificado como indicado; **Não exercitado** = escrito e compilando, mas sem ter sido usado de verdade (falta teste manual ou o recurso externo); **Aberto** = falta fazer.
 

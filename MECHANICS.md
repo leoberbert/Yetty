@@ -530,7 +530,7 @@ Round 37 "Sort alphabetically" check box was wrong). Logically compares numbers 
 Still different: blue check boxes, group titles drawn inside the border, tab scroll arrows, status bar size grip, the tree's +/- boxes and dotted
 lines in the Session Manager, window icon.
 
-## Round 39 — Linux port (branch `linux`)
+## Round 39 — Linux port
 
 Goal: the Windows program, unchanged in look and behaviour, builds and runs on Linux. System-specific code is behind `cfg(windows)` /
 `cfg(not(windows))`; the Windows paths were left as they were (checked with `cargo check --target x86_64-pc-windows-msvc`, not run).
@@ -552,6 +552,6 @@ State of every item: PENDENCIAS.md, "Versão Linux".
   (Hack with unitsPerEm 2048 → 2243, so cells are 0.550 em like Consolas, `tools/make-mono-font.py`). Symbols / CJK from Noto, DejaVu, WenQuanYi.
   Checked against `docs/images/tela-inicial.png` and `terminal-local.png`: menu bar words within 3 px, 7.2 px per terminal column (124 columns
   where plain Hack gave 113), toolbar icons same size and row.
-- Status bar Caps / Num Lock from `/sys/class/leds`. View > Window Transparency is disabled off Windows. Window `app_id` "yetty" (Linux only).
+- Status bar Caps / Num Lock from `/sys/class/leds`. View > Window Transparency works off Windows through `winalpha.rs` (window created with an alpha channel; every shape of the frame faded by 200/255). Window `app_id` "yetty" (Linux only).
 - Still to do: real ssh / SFTP login, keyboard on the real window, portal dialogs, RDP / print / serial, transparency, AppImage, native `sz` /
   `rz` / `gkermit` tests.
