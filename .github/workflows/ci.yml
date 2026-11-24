@@ -19,7 +19,7 @@ env:
   RUSTFLAGS: -D warnings
 
 jobs:
-  # O Yetty depende de Win32 (DPAPI, ConPTY, MDL2), então tudo roda em Windows.
+  # O Windows é a plataforma principal (DPAPI, ConPTY, MDL2); o Linux roda em paralelo (veja PENDENCIAS.md, seção Linux).
   build-test:
     name: Build e testes (Windows)
     runs-on: windows-latest
@@ -37,6 +37,42 @@ jobs:
 
       - name: Testes
         run: cargo test --locked
+
+  build-test-linux:
+    name: Build e testes (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain Rust estável
+        run: rustup toolchain install stable --profile minimal
+
+      - uses: Swatinem/rust-cache@v2
+
+      # O OpenSSL é compilado junto (feature "vendored"): precisa só de perl, make e cc, que o runner já tem.
+      - name: Build (debug)
+        run: cargo build --locked --all-targets
+
+      - name: Testes
+        run: cargo test --locked
+
+  lint-linux:
+    name: Clippy (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      RUSTFLAGS: ""
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain Rust estável
+        run: rustup toolchain install stable --profile minimal --component clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
 
   lint:
     name: Clippy e rustfmt

@@ -1041,25 +1041,24 @@ fn session_menu(ui: &mut egui::Ui, c: &mut TreeCtx, i: usize) {
 }
 
 /// Characters the built-in fonts lack (check marks, arrows, Chinese / Japanese / Korean) come from the
-/// fonts Windows ships; they are added behind the built-in ones, so the look of normal text is unchanged.
+/// fonts the system ships (see `sysfonts.rs`); they are added behind the built-in ones, so the look of
+/// normal text is unchanged.
 fn install_fallback_fonts(ctx: &egui::Context) {
-    let windir = std::env::var("WINDIR").unwrap_or_else(|_| "C:\\Windows".into());
     let candidates = [
-        ("fb_mdl2", "segmdl2.ttf"),
-        ("fb_symbols", "seguisym.ttf"),
-        ("fb_cjk_sc", "msyh.ttc"),
-        ("fb_cjk_jp", "msgothic.ttc"),
-        ("fb_korean", "malgun.ttf"),
-        ("fb_cjk_tc", "msjh.ttc"),
+        "fb_mdl2",
+        "fb_symbols",
+        "fb_cjk_sc",
+        "fb_cjk_jp",
+        "fb_korean",
+        "fb_cjk_tc",
     ];
     let mut fonts = egui::FontDefinitions::default();
     // The original draws the session window in Consolas and its menus in Segoe UI.
-    for (name, file, fam) in [
-        ("win_consolas", "consola.ttf", egui::FontFamily::Monospace),
-        ("win_segoeui", "segoeui.ttf", egui::FontFamily::Proportional),
+    for (name, fam) in [
+        ("win_consolas", egui::FontFamily::Monospace),
+        ("win_segoeui", egui::FontFamily::Proportional),
     ] {
-        let path = std::path::Path::new(&windir).join("Fonts").join(file);
-        if let Ok(bytes) = std::fs::read(&path) {
+        if let Some(bytes) = crate::sysfonts::load(name) {
             fonts.font_data.insert(
                 name.to_string(),
                 std::sync::Arc::new(egui::FontData::from_owned(bytes)),
@@ -1070,9 +1069,8 @@ fn install_fallback_fonts(ctx: &egui::Context) {
         }
     }
     let mut added = Vec::new();
-    for (name, file) in candidates {
-        let path = std::path::Path::new(&windir).join("Fonts").join(file);
-        if let Ok(bytes) = std::fs::read(&path) {
+    for name in candidates {
+        if let Some(bytes) = crate::sysfonts::load(name) {
             fonts.font_data.insert(
                 name.to_string(),
                 std::sync::Arc::new(egui::FontData::from_owned(bytes)),
@@ -1579,11 +1577,13 @@ impl YettyApp {
         screenshot: Option<String>,
         connect: Option<String>,
     ) -> Self {
-        let mut settings = if screenshot.is_some() {
-            Settings::default()
-        } else {
-            Settings::load()
-        };
+        // screenshots start from defaults, unless YETTY_SHOT_LOAD_SETTINGS is set (a prepared settings.json)
+        let mut settings =
+            if screenshot.is_some() && std::env::var_os("YETTY_SHOT_LOAD_SETTINGS").is_none() {
+                Settings::default()
+            } else {
+                Settings::load()
+            };
         // Global Options > General "Save expanded folder state for session list" off: folders start closed
         if !settings.global.save_tree_state {
             settings.tree_open.clear();
@@ -1726,6 +1726,29 @@ impl YettyApp {
                     app.open_session(cfg, &cc.egui_ctx);
                     if let Some(s) = app.sessions.last_mut() {
                         s.parser.process("check \u{2713} \u{2714} arrows \u{2192} \u{2190}\r\ncjk \u{6f22}\u{5b57} \u{65e5}\u{672c}\u{8a9e} \u{d55c}\u{ae00}\r\npath /etc/a?b @ \\ |\r\n-rwxrwxr-x 1 ubuntu ubuntu      519 nov  7  2025  \x1b[1;32mteste2.sh\x1b[0m\r\ndrwxrwxr-x 1 ubuntu ubuntu       36 dez 11  2025  \x1b[1;34mcatalogo\x1b[0m\r\n-rw-rw-r-- 1 ubuntu ubuntu 28948275 jan  5  2026  \x1b[1;31mk6-v1.5.0.tar.gz\x1b[0m\r\n".as_bytes());
+                    }
+                } else if let Some(name) = scene.strip_prefix("colors:") {
+                    // every ANSI colour (normal and bright, as foreground and as background) under one colour scheme
+                    let mut cfg = app.settings.defaults_for(Protocol::LocalShell);
+                    cfg.name = name.into();
+                    cfg.color_scheme = name.into();
+                    app.open_session(cfg, &cc.egui_ctx);
+                    if let Some(s) = app.sessions.last_mut() {
+                        let mut t = String::from("default text on the scheme background\r\n");
+                        for base in [30, 90] {
+                            for i in 0..8 {
+                                t += &format!("\x1b[{}m{:>3} \x1b[0m", base + i, base + i);
+                            }
+                            t += "\r\n";
+                        }
+                        for base in [40, 100] {
+                            for i in 0..8 {
+                                t += &format!("\x1b[{}m{:>3} \x1b[0m", base + i, base + i);
+                            }
+                            t += "\r\n";
+                        }
+                        t += "\x1b[1mbold\x1b[0m \x1b[4munderline\x1b[0m \x1b[7mreverse\x1b[0m \x1b[1;31mbold red\x1b[0m \x1b[38;5;208m256:208\x1b[0m \x1b[38;2;10;200;120mtruecolor\x1b[0m\r\n";
+                        s.parser.process(t.as_bytes());
                     }
                 } else if scene.starts_with("cmd") {
                     // cmdwin = Command Window; cmdman = Command Manager; cmddlg = Command Properties
@@ -2080,10 +2103,11 @@ impl YettyApp {
         if cfg.protocol == Protocol::Rdp {
             // Remote Desktop: the Windows client runs in its own window.
             let port = if cfg.port == 0 { 3389 } else { cfg.port };
-            let mut c = std::process::Command::new("mstsc.exe");
-            c.arg(format!("/v:{}:{}", cfg.host.trim(), port));
-            self.status_msg = match c.spawn() {
-                Ok(_) => format!("Remote Desktop to {} started", cfg.host.trim()),
+            let host = cfg.host.trim();
+            self.status_msg = match crate::conn::rdp_command(host, port)
+                .and_then(|mut c| c.spawn().map_err(|e| e.to_string()))
+            {
+                Ok(_) => format!("Remote Desktop to {host} started"),
                 Err(e) => format!("Could not start Remote Desktop: {e}"),
             };
             return;
@@ -2190,7 +2214,12 @@ impl YettyApp {
     fn tool_create_public_key(&mut self, ctx: &egui::Context) {
         let mut cfg = self.settings.defaults_for(Protocol::LocalShell);
         cfg.name = "Create Public Key".into();
-        cfg.shell_command = "ssh-keygen.exe -t ed25519".into();
+        cfg.shell_command = if cfg!(windows) {
+            "ssh-keygen.exe -t ed25519"
+        } else {
+            "ssh-keygen -t ed25519"
+        }
+        .into();
         self.open_session(cfg, ctx);
     }
 
@@ -2198,7 +2227,13 @@ impl YettyApp {
     fn tool_manage_agent_keys(&mut self, ctx: &egui::Context) {
         let mut cfg = self.settings.defaults_for(Protocol::LocalShell);
         cfg.name = "Agent Keys".into();
-        cfg.shell_command = "cmd.exe /k ssh-add -l".into();
+        cfg.shell_command = if cfg!(windows) {
+            // cmd.exe keeps the tab open after ssh-add ends
+            "cmd.exe /k ssh-add -l"
+        } else {
+            "sh -c \"ssh-add -l; exec \\\"${SHELL:-sh}\\\"\""
+        }
+        .into();
         self.open_session(cfg, ctx);
     }
 
@@ -2309,7 +2344,12 @@ impl YettyApp {
         match p {
             Protocol::Serial => {
                 if let Some(x) = parts.first() {
-                    cfg.com_port = x.to_uppercase();
+                    // COM ports are written in capitals; a device file (/dev/ttyUSB0) keeps its case
+                    cfg.com_port = if x.starts_with('/') {
+                        x.to_string()
+                    } else {
+                        x.to_uppercase()
+                    };
                 }
                 if let Some(b) = parts.get(1).and_then(|b| b.parse().ok()) {
                     cfg.baud = b;
@@ -2904,11 +2944,11 @@ impl YettyApp {
             for s in &mut self.sessions {
                 s.capture_file = None;
             }
-            let _ = std::process::Command::new("notepad.exe")
-                .arg("/p")
-                .arg(&path)
-                .spawn();
-            self.status_msg = "Auto print finished: sent to the default printer".into();
+            let printed = config::print_file(&path);
+            self.status_msg = match printed {
+                Ok(()) => "Auto print finished: sent to the default printer".into(),
+                Err(e) => e,
+            };
         } else if let Some(s) = self.sessions.get_mut(self.active) {
             match s.start_capture(&path.to_string_lossy()) {
                 Ok(()) => {
@@ -2943,11 +2983,10 @@ impl YettyApp {
         let _ = std::fs::create_dir_all(&dir);
         let path = dir.join("print.txt");
         if std::fs::write(&path, text).is_ok() {
-            let _ = std::process::Command::new("notepad.exe")
-                .arg("/p")
-                .arg(&path)
-                .spawn();
-            self.status_msg = "Sent to the default printer".into();
+            self.status_msg = match config::print_file(&path) {
+                Ok(()) => "Sent to the default printer".into(),
+                Err(e) => e,
+            };
         }
     }
 
@@ -3765,7 +3804,7 @@ impl YettyApp {
                     if mi(ui, "Edit...", "", true) {
                         ui.close();
                         if let Some(p) = crate::nativedlg::open_script("Select Script to Edit") {
-                            let _ = std::process::Command::new("notepad.exe").arg(&p).spawn();
+                            config::edit_file(&p);
                         }
                     }
                     if mi(ui, "Cancel", "", !self.scripts.is_empty()) {
@@ -4392,15 +4431,7 @@ impl YettyApp {
                             .chars()
                             .map(|c| if "<>:\"/\\|?*".contains(c) { '_' } else { c })
                             .collect();
-                        let script = format!(
-                            "$d=[Environment]::GetFolderPath('Desktop');$w=New-Object -ComObject WScript.Shell;$l=$w.CreateShortcut(\"$d\\{}.lnk\");$l.TargetPath='{}';$l.Arguments='--session \"{}\"';$l.Save()",
-                            name.replace('\'', "''"),
-                            exe.display().to_string().replace('\'', "''"),
-                            s.display_name().replace('\'', "''")
-                        );
-                        let _ = std::process::Command::new("powershell.exe")
-                            .args(["-NoProfile", "-WindowStyle", "Hidden", "-Command", &script])
-                            .spawn();
+                        config::create_desktop_shortcut(&name, &exe, &s.display_name());
                         self.status_msg = "Desktop shortcut created".into();
                     }
                 }
@@ -7875,6 +7906,13 @@ impl YettyApp {
         };
         self.frames += 1;
         ctx.request_repaint();
+        // Test hook: switch theme part-way through, the same two calls the View > Themes menu makes
+        if self.frames == 20 {
+            if let Ok(t) = std::env::var("YETTY_SHOT_THEME_THEN") {
+                self.settings.theme = t.clone();
+                apply_theme(ctx, &t);
+            }
+        }
         let wanted = std::env::var("YETTY_SHOT_FRAMES")
             .ok()
             .and_then(|v| v.parse().ok())
@@ -7910,6 +7948,10 @@ impl YettyApp {
         }
     }
 }
+
+/// Window Transparency level (200/255, the value used on Windows).
+#[cfg(not(windows))]
+const OPACITY: f32 = 200.0 / 255.0;
 
 impl eframe::App for YettyApp {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
@@ -8055,8 +8097,25 @@ impl eframe::App for YettyApp {
             self.side = None;
         }
         let (dark, panel_fill, central_fill) = palette(&self.settings.theme);
+        // translucent window: shapes drawn over each other would fade twice (see winalpha), so the terminal's own
+        // background is the only layer under it
+        #[cfg(not(windows))]
+        let central_fill = if self.transparent {
+            Color32::TRANSPARENT
+        } else {
+            central_fill
+        };
         let status_fill = if dark {
-            Color32::from_gray(0x33)
+            // 0x33 on the grey themes (measured); a tinted theme keeps its tint, a little lighter than its panel
+            if panel_fill.r() == panel_fill.g() && panel_fill.g() == panel_fill.b() {
+                Color32::from_gray(0x33)
+            } else {
+                Color32::from_rgb(
+                    panel_fill.r() + 0x14,
+                    panel_fill.g() + 0x14,
+                    panel_fill.b() + 0x14,
+                )
+            }
         } else {
             panel_fill
         };
@@ -8229,6 +8288,19 @@ impl eframe::App for YettyApp {
 
         self.dialogs(&ctx);
         self.screenshot_step(&ctx);
+        #[cfg(not(windows))]
+        crate::winalpha::apply(&ctx, if self.transparent { OPACITY } else { 1.0 });
+    }
+
+    #[cfg(not(windows))]
+    fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
+        // the window has an alpha channel (see main.rs): opaque unless Window Transparency is on
+        if self.transparent {
+            [0.0; 4]
+        } else {
+            let c = visuals.panel_fill;
+            Color32::from_rgb(c.r(), c.g(), c.b()).to_normalized_gamma_f32()
+        }
     }
 
     fn on_exit(&mut self) {

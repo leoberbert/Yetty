@@ -720,9 +720,26 @@ mod real {
 
     const TOOLS: &str = "$HOME/yt_tools/usr/bin";
 
-    fn wsl_path(p: &Path) -> String {
-        let s = p.to_string_lossy().replace('\\', "/");
-        format!("/mnt/{}{}", s[..1].to_lowercase(), &s[2..])
+    /// Path as the shell that runs the program sees it (WSL on Windows, the host itself elsewhere).
+    fn shell_path(p: &Path) -> String {
+        if cfg!(windows) {
+            let s = p.to_string_lossy().replace('\\', "/");
+            format!("/mnt/{}{}", s[..1].to_lowercase(), &s[2..])
+        } else {
+            p.to_string_lossy().into_owned()
+        }
+    }
+
+    fn shell(line: &str) -> Command {
+        if cfg!(windows) {
+            let mut c = Command::new("wsl.exe");
+            c.args(["-e", "sh", "-c", line]);
+            c
+        } else {
+            let mut c = Command::new("sh");
+            c.args(["-c", line]);
+            c
+        }
     }
 
     fn work(name: &str) -> PathBuf {
@@ -741,9 +758,8 @@ mod real {
 
     /// Start `cmd` (a shell line run in `dir` inside WSL) and let `t` talk to it until done.
     fn drive(dir: &Path, cmd: &str, t: &mut Transfer) -> String {
-        let line = format!("cd '{}' && PATH={TOOLS}:$PATH {cmd}", wsl_path(dir));
-        let mut child = Command::new("wsl.exe")
-            .args(["-e", "sh", "-c", &line])
+        let line = format!("cd '{}' && PATH={TOOLS}:$PATH {cmd}", shell_path(dir));
+        let mut child = shell(&line)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -808,7 +824,24 @@ mod real {
     }
 
     fn check(name: &str, t: &Transfer, info: &str, out_file: &Path, want: &[u8]) {
-        let got = std::fs::read(out_file).unwrap_or_default();
+        // gkermit sends names in upper case; Windows (WSL /mnt) hid that, Linux does not
+        let wanted = out_file
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .to_lowercase();
+        let found = std::fs::read_dir(out_file.parent().unwrap())
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|e| e.path())
+            .find(|p| {
+                p.file_name()
+                    .is_some_and(|n| n.to_string_lossy().to_lowercase() == wanted)
+            });
+        let got = found
+            .and_then(|p| std::fs::read(p).ok())
+            .unwrap_or_default();
         println!(
             "{name}: done={} failed={} bytes={} -> {}",
             t.done,
@@ -914,5 +947,78 @@ mod real {
             &d.join("out").join("file.bin"),
             &data,
         );
+    }
+
+    /// ssh to a remote lab machine: `YETTY_LAB=user@host` and `SSHPASS` (password) in the environment.
+    /// The remote has lrzsz installed as `lrzsz-sz` / `lrzsz-rz` (Arch packaging).
+    fn lab() -> Option<String> {
+        std::env::var("YETTY_LAB").ok().filter(|h| !h.is_empty())
+    }
+
+    fn lab_ssh(host: &str, remote: &str) -> String {
+        format!(
+            "sshpass -e ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR {host} '{remote}'"
+        )
+    }
+
+    #[test]
+    #[ignore]
+    fn real_zmodem_receive_from_remote_sz() {
+        let Some(host) = lab() else { return };
+        let d = work("lab_sz");
+        let data = payload();
+        let put = format!(
+            "cat > /tmp/ytr_file.bin < '{}'",
+            d.join("in").join("file.bin").display()
+        );
+        std::fs::write(d.join("in").join("file.bin"), &data).unwrap();
+        let st = shell(&format!(
+            "sshpass -e ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR {host} 'cat > /tmp/ytr_file.bin' < '{}'",
+            d.join("in").join("file.bin").display()
+        ))
+        .status()
+        .unwrap();
+        assert!(st.success(), "upload to lab failed ({put})");
+        let mut t = Transfer::new_zmodem_receive(d.join("out"));
+        let info = drive(
+            &d.join("in"),
+            &lab_ssh(
+                &host,
+                "cd /tmp && cp ytr_file.bin file.bin && lrzsz-sz -b file.bin",
+            ),
+            &mut t,
+        );
+        check(
+            "lab sz -> Yetty",
+            &t,
+            &info,
+            &d.join("out").join("file.bin"),
+            &data,
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn real_zmodem_send_to_remote_rz() {
+        let Some(host) = lab() else { return };
+        let d = work("lab_rz");
+        let data = payload();
+        let src = d.join("in").join("sent.bin");
+        std::fs::write(&src, &data).unwrap();
+        let mut t = Transfer::new_zmodem_send(vec![src.clone()]).unwrap();
+        let info = drive(
+            &d.join("out"),
+            &lab_ssh(
+                &host,
+                "mkdir -p /tmp/ytr_in && cd /tmp/ytr_in && rm -f sent.bin && lrzsz-rz -b -y",
+            ),
+            &mut t,
+        );
+        assert!(t.done && !t.failed, "Yetty -> lab rz: {info}");
+        let got = shell(&lab_ssh(&host, "cat /tmp/ytr_in/sent.bin"))
+            .output()
+            .unwrap()
+            .stdout;
+        assert!(got == data, "lab rz: content differs ({} bytes)", got.len());
     }
 }

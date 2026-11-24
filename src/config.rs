@@ -444,7 +444,7 @@ impl Default for SessionConfig {
             strict_host_key: "ask".into(),
             ssh_verbose: false,
             forwards: Vec::new(),
-            com_port: "COM1".into(),
+            com_port: crate::conn::default_serial_ports().swap_remove(0),
             baud: 38400,
             data_bits: 8,
             parity: Parity::None,
@@ -521,9 +521,7 @@ impl Default for SessionConfig {
             log_custom_disconnect: String::new(),
             log_custom_line: String::new(),
             log_only_custom: false,
-            sftp_local_dir: std::env::var("USERPROFILE")
-                .map(|p| format!("{p}\\Documents"))
-                .unwrap_or_default(),
+            sftp_local_dir: documents_dir(),
             compression_level: 5,
             print_header: String::new(),
             print_footer: String::new(),
@@ -803,17 +801,71 @@ impl Settings {
     }
 }
 
-pub fn data_dir() -> PathBuf {
-    let base = std::env::var_os("APPDATA")
+/// The user's home folder (`USERPROFILE` on Windows, `HOME` elsewhere).
+pub fn home_dir() -> Option<PathBuf> {
+    std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
+        .filter(|p| !p.is_empty())
         .map(PathBuf::from)
-        .unwrap_or_else(std::env::temp_dir);
-    let dir = base.join("Yetty");
-    // The program was called NexTerm before: its settings folder is moved over once.
-    let old = base.join("NexTerm");
-    if !dir.exists() && old.is_dir() {
-        let _ = std::fs::rename(&old, &dir);
+}
+
+/// Where the settings live: `%APPDATA%\Yetty` on Windows, `$XDG_CONFIG_HOME/yetty` (`~/.config/yetty`) on Linux.
+pub fn data_dir() -> PathBuf {
+    #[cfg(windows)]
+    {
+        let base = std::env::var_os("APPDATA")
+            .map(PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir);
+        let dir = base.join("Yetty");
+        // The program was called NexTerm before: its settings folder is moved over once.
+        let old = base.join("NexTerm");
+        if !dir.exists() && old.is_dir() {
+            let _ = std::fs::rename(&old, &dir);
+        }
+        dir
     }
-    dir
+    #[cfg(not(windows))]
+    {
+        std::env::var_os("XDG_CONFIG_HOME")
+            .filter(|p| !p.is_empty())
+            .map(PathBuf::from)
+            .or_else(|| home_dir().map(|h| h.join(".config")))
+            .unwrap_or_else(std::env::temp_dir)
+            .join("yetty")
+    }
+}
+
+/// A folder of the user-dirs list (`XDG_DOCUMENTS_DIR="$HOME/Documentos"` in `~/.config/user-dirs.dirs`).
+#[cfg(not(windows))]
+fn xdg_user_dir(key: &str) -> Option<String> {
+    let home = home_dir()?;
+    let conf = std::env::var_os("XDG_CONFIG_HOME")
+        .filter(|p| !p.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home.join(".config"));
+    let text = std::fs::read_to_string(conf.join("user-dirs.dirs")).ok()?;
+    let prefix = format!("XDG_{key}_DIR=");
+    let value = text
+        .lines()
+        .find_map(|l| l.trim().strip_prefix(prefix.as_str()))?
+        .trim()
+        .trim_matches('"');
+    Some(value.replace("$HOME", &home.to_string_lossy()))
+}
+
+/// Default local folder of SFTP sessions: the Documents folder.
+fn documents_dir() -> String {
+    #[cfg(windows)]
+    {
+        std::env::var("USERPROFILE")
+            .map(|p| format!("{p}\\Documents"))
+            .unwrap_or_default()
+    }
+    #[cfg(not(windows))]
+    {
+        xdg_user_dir("DOCUMENTS")
+            .or_else(|| home_dir().map(|h| h.join("Documents").to_string_lossy().into_owned()))
+            .unwrap_or_default()
+    }
 }
 
 fn settings_path() -> PathBuf {
@@ -965,6 +1017,34 @@ pub fn lock_keys() -> (bool, bool) {
             sys::GetKeyState(0x90) & 1 != 0,
         );
     }
+    // Linux: the keyboard LEDs are files in sysfs (/sys/class/leds/input3::capslock/brightness); read at
+    // most every 200 ms because the status bar asks at every frame.
+    #[cfg(target_os = "linux")]
+    {
+        static CACHE: std::sync::Mutex<Option<(std::time::Instant, (bool, bool))>> =
+            std::sync::Mutex::new(None);
+        fn led_on(name: &str) -> bool {
+            std::fs::read_dir("/sys/class/leds")
+                .into_iter()
+                .flatten()
+                .flatten()
+                .filter(|e| e.file_name().to_string_lossy().ends_with(name))
+                .any(|e| {
+                    std::fs::read_to_string(e.path().join("brightness"))
+                        .map(|b| b.trim() != "0")
+                        .unwrap_or(false)
+                })
+        }
+        let mut cache = CACHE.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((at, state)) = *cache {
+            if at.elapsed() < std::time::Duration::from_millis(200) {
+                return state;
+            }
+        }
+        let state = (led_on("::capslock"), led_on("::numlock"));
+        *cache = Some((std::time::Instant::now(), state));
+        return state;
+    }
     #[allow(unreachable_code)]
     (false, false)
 }
@@ -972,7 +1052,7 @@ pub fn lock_keys() -> (bool, bool) {
 /// Private-key files found in the user's .ssh folder.
 pub fn detected_keys() -> Vec<String> {
     let mut out = Vec::new();
-    if let Some(dir) = std::env::var_os("USERPROFILE").map(|p| PathBuf::from(p).join(".ssh")) {
+    if let Some(dir) = home_dir().map(|h| h.join(".ssh")) {
         if let Ok(rd) = std::fs::read_dir(dir) {
             for e in rd.flatten() {
                 let p = e.path();
@@ -1050,7 +1130,145 @@ pub fn open_console(cmdline: &str) {
     }
     #[cfg(not(windows))]
     {
-        let _ = cmdline;
+        // The first terminal emulator of the system that starts; the window waits for Enter at the end.
+        let script = format!("{cmdline}; echo; printf 'Press Enter to close...'; read dummy");
+        for (term, run_flag) in [
+            ("x-terminal-emulator", "-e"),
+            ("gnome-terminal", "--"),
+            ("kgx", "--"),
+            ("konsole", "-e"),
+            ("xfce4-terminal", "-x"),
+            ("mate-terminal", "-x"),
+            ("alacritty", "-e"),
+            ("kitty", ""),
+            ("foot", ""),
+            ("xterm", "-e"),
+        ] {
+            let Some(path) = crate::conn::find_program(term) else {
+                continue;
+            };
+            let mut c = std::process::Command::new(path);
+            if !run_flag.is_empty() {
+                c.arg(run_flag);
+            }
+            if c.args(["sh", "-c", &script]).spawn().is_ok() {
+                return;
+            }
+        }
+    }
+}
+
+/// "Create Identity File...": `ssh-keygen -t ed25519` in its own console window.
+pub fn open_keygen_console() {
+    #[cfg(windows)]
+    {
+        let _ = std::process::Command::new("cmd.exe")
+            .args([
+                "/C",
+                "start",
+                "Yetty key generator",
+                "cmd.exe",
+                "/K",
+                "ssh-keygen -t ed25519",
+            ])
+            .spawn();
+    }
+    #[cfg(not(windows))]
+    open_console("ssh-keygen -t ed25519");
+}
+
+/// Send a text file to the default printer. Windows: `notepad /p`; elsewhere: `lp` (CUPS).
+pub fn print_file(path: &std::path::Path) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        let _ = std::process::Command::new("notepad.exe")
+            .arg("/p")
+            .arg(path)
+            .spawn();
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        let lp = crate::conn::find_program("lp")
+            .ok_or("Printing needs CUPS (the lp command), which was not found")?;
+        std::process::Command::new(lp)
+            .arg(path)
+            .stdin(std::process::Stdio::null())
+            .spawn()
+            .map(|_| ())
+            .map_err(|e| format!("Could not run lp: {e}"))
+    }
+}
+
+/// Open a file in the system's text editor (Notepad; elsewhere the default program of the file).
+pub fn edit_file(path: &str) {
+    #[cfg(windows)]
+    {
+        let _ = std::process::Command::new("notepad.exe").arg(path).spawn();
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = std::process::Command::new("xdg-open").arg(path).spawn();
+    }
+}
+
+/// Contents of the `.desktop` shortcut that opens the saved session `session`.
+/// Exec arguments are double-quoted; `"`, `` ` ``, `$` and `\` take a backslash, `%` is doubled.
+#[cfg(not(windows))]
+fn desktop_entry(exe: &std::path::Path, session: &str) -> String {
+    let quote = |s: &str| {
+        let mut q = String::from("\"");
+        for c in s.chars() {
+            match c {
+                '"' | '`' | '$' | '\\' => {
+                    q.push('\\');
+                    q.push(c);
+                }
+                '%' => q.push_str("%%"),
+                c => q.push(c),
+            }
+        }
+        q.push('"');
+        q
+    };
+    format!(
+        "[Desktop Entry]\nType=Application\nName={}\nExec={} --session {}\nIcon=yetty\nTerminal=false\nCategories=Network;TerminalEmulator;\n",
+        session.replace('\n', " "),
+        quote(&exe.to_string_lossy()),
+        quote(session),
+    )
+}
+
+/// A desktop shortcut that opens the saved session `session` in Yetty. Windows: a `.lnk` file made through
+/// PowerShell; elsewhere: a `.desktop` file in the Desktop folder.
+pub fn create_desktop_shortcut(file_name: &str, exe: &std::path::Path, session: &str) {
+    #[cfg(windows)]
+    {
+        let script = format!(
+            "$d=[Environment]::GetFolderPath('Desktop');$w=New-Object -ComObject WScript.Shell;$l=$w.CreateShortcut(\"$d\\{}.lnk\");$l.TargetPath='{}';$l.Arguments='--session \"{}\"';$l.Save()",
+            file_name.replace('\'', "''"),
+            exe.display().to_string().replace('\'', "''"),
+            session.replace('\'', "''")
+        );
+        let _ = std::process::Command::new("powershell.exe")
+            .args(["-NoProfile", "-WindowStyle", "Hidden", "-Command", &script])
+            .spawn();
+    }
+    #[cfg(not(windows))]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let Some(home) = home_dir() else {
+            return;
+        };
+        let desktop = xdg_user_dir("DESKTOP")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| home.join("Desktop"));
+        let _ = std::fs::create_dir_all(&desktop);
+        let path = desktop.join(format!("{file_name}.desktop"));
+        let body = desktop_entry(exe, session);
+        if std::fs::write(&path, body).is_ok() {
+            let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755));
+        }
     }
 }
 
@@ -1101,8 +1319,8 @@ fn browse_save_slow(title: &str) -> Option<String> {
 }
 
 pub fn ssh_dir() -> String {
-    std::env::var_os("USERPROFILE")
-        .map(|p| PathBuf::from(p).join(".ssh").to_string_lossy().into_owned())
+    home_dir()
+        .map(|h| h.join(".ssh").to_string_lossy().into_owned())
         .unwrap_or_default()
 }
 
@@ -1144,9 +1362,23 @@ mod dpapi {
     }
 }
 
+/// Protected with the operating system's per-user secret: DPAPI on Windows.
+#[cfg(windows)]
 const ENC_PREFIX: &str = "dpapi:";
 /// Protected with the Windows user's key and the configuration passphrase as extra entropy.
+#[cfg(windows)]
 const ENC2_PREFIX: &str = "dpapi2:";
+/// Linux: ChaCha20-Poly1305 with the random key kept in `master.key` (mode 0600) in the settings folder.
+#[cfg(not(windows))]
+const ENC_PREFIX: &str = "lkey:";
+/// Linux: the same, with the key derived from the master key and the configuration passphrase.
+#[cfg(not(windows))]
+const ENC2_PREFIX: &str = "lkey2:";
+/// Values written by the other system: they cannot be opened here, and must never be taken as plain text.
+#[cfg(windows)]
+const FOREIGN_PREFIXES: [&str; 2] = ["lkey:", "lkey2:"];
+#[cfg(not(windows))]
+const FOREIGN_PREFIXES: [&str; 2] = ["dpapi:", "dpapi2:"];
 const PASS_CHECK: &str = "yetty-configuration-passphrase";
 
 static PASSPHRASE: std::sync::RwLock<Option<String>> = std::sync::RwLock::new(None);
@@ -1163,11 +1395,13 @@ fn current_passphrase() -> Option<String> {
 }
 
 pub fn is_protected(s: &str) -> bool {
-    s.starts_with(ENC_PREFIX) || s.starts_with(ENC2_PREFIX)
+    s.starts_with(ENC_PREFIX)
+        || s.starts_with(ENC2_PREFIX)
+        || FOREIGN_PREFIXES.iter().any(|p| s.starts_with(p))
 }
 
 #[cfg(windows)]
-fn dpapi_protect(plain: &[u8], entropy: Option<&[u8]>) -> Option<Vec<u8>> {
+fn os_protect(plain: &[u8], entropy: Option<&[u8]>) -> Option<Vec<u8>> {
     unsafe {
         let mut data = plain.to_vec();
         let input = dpapi::Blob {
@@ -1206,7 +1440,7 @@ fn dpapi_protect(plain: &[u8], entropy: Option<&[u8]>) -> Option<Vec<u8>> {
 }
 
 #[cfg(windows)]
-fn dpapi_unprotect(cipher: &[u8], entropy: Option<&[u8]>) -> Option<Vec<u8>> {
+fn os_unprotect(cipher: &[u8], entropy: Option<&[u8]>) -> Option<Vec<u8>> {
     unsafe {
         let mut data = cipher.to_vec();
         let input = dpapi::Blob {
@@ -1245,13 +1479,104 @@ fn dpapi_unprotect(cipher: &[u8], entropy: Option<&[u8]>) -> Option<Vec<u8>> {
 }
 
 #[cfg(not(windows))]
-fn dpapi_protect(_plain: &[u8], _entropy: Option<&[u8]>) -> Option<Vec<u8>> {
-    None
+mod linux_secret {
+    use chacha20poly1305::aead::{rand_core::RngCore, Aead, AeadCore, KeyInit, OsRng};
+    use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
+    use std::io::Write;
+    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+
+    const NONCE_LEN: usize = 12;
+
+    fn read_key(path: &std::path::Path) -> Option<[u8; 32]> {
+        std::fs::read(path).ok()?.try_into().ok()
+    }
+
+    /// The random key of this user's settings folder; created on first use, readable by the user only.
+    fn create_or_load() -> Option<[u8; 32]> {
+        let dir = super::data_dir();
+        let path = dir.join("master.key");
+        if let Some(k) = read_key(&path) {
+            return Some(k);
+        }
+        std::fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(&dir)
+            .ok()?;
+        let mut key = [0u8; 32];
+        OsRng.fill_bytes(&mut key);
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&path)
+        {
+            Ok(mut f) => {
+                f.write_all(&key).ok()?;
+                Some(key)
+            }
+            // another instance created it a moment ago
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                for _ in 0..20 {
+                    if let Some(k) = read_key(&path) {
+                        return Some(k);
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                }
+                None
+            }
+            Err(_) => None,
+        }
+    }
+
+    fn master_key() -> Option<[u8; 32]> {
+        static KEY: std::sync::LazyLock<Option<[u8; 32]>> =
+            std::sync::LazyLock::new(create_or_load);
+        *KEY
+    }
+
+    /// The master key, or (with a passphrase) a key derived from it and the passphrase.
+    fn cipher_key(entropy: Option<&[u8]>) -> Option<[u8; 32]> {
+        let master = master_key()?;
+        Some(match entropy {
+            None => master,
+            Some(pass) => {
+                let mut out = [0u8; 32];
+                pbkdf2::pbkdf2_hmac::<sha2::Sha256>(pass, &master, 100_000, &mut out);
+                out
+            }
+        })
+    }
+
+    /// nonce (12 bytes) followed by the encrypted text and its authentication tag.
+    pub fn protect(plain: &[u8], entropy: Option<&[u8]>) -> Option<Vec<u8>> {
+        let key = cipher_key(entropy)?;
+        let cipher = ChaCha20Poly1305::new(Key::from_slice(&key));
+        let nonce = ChaCha20Poly1305::generate_nonce(&mut OsRng);
+        let mut out = nonce.to_vec();
+        out.extend(cipher.encrypt(&nonce, plain).ok()?);
+        Some(out)
+    }
+
+    pub fn unprotect(data: &[u8], entropy: Option<&[u8]>) -> Option<Vec<u8>> {
+        if data.len() < NONCE_LEN {
+            return None;
+        }
+        let key = cipher_key(entropy)?;
+        let cipher = ChaCha20Poly1305::new(Key::from_slice(&key));
+        let (nonce, body) = data.split_at(NONCE_LEN);
+        cipher.decrypt(Nonce::from_slice(nonce), body).ok()
+    }
 }
 
 #[cfg(not(windows))]
-fn dpapi_unprotect(_cipher: &[u8], _entropy: Option<&[u8]>) -> Option<Vec<u8>> {
-    None
+fn os_protect(plain: &[u8], entropy: Option<&[u8]>) -> Option<Vec<u8>> {
+    linux_secret::protect(plain, entropy)
+}
+
+#[cfg(not(windows))]
+fn os_unprotect(cipher: &[u8], entropy: Option<&[u8]>) -> Option<Vec<u8>> {
+    linux_secret::unprotect(cipher, entropy)
 }
 
 /// Encrypt with the given passphrase (None: the Windows user's key only).
@@ -1260,7 +1585,7 @@ pub fn protect_with(plain: &str, passphrase: Option<&str>) -> String {
         return plain.to_string();
     }
     let pass = passphrase.filter(|p| !p.is_empty());
-    match dpapi_protect(plain.as_bytes(), pass.map(|p| p.as_bytes())) {
+    match os_protect(plain.as_bytes(), pass.map(|p| p.as_bytes())) {
         Some(bytes) => {
             let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
             format!(
@@ -1278,6 +1603,9 @@ pub fn protect_with(plain: &str, passphrase: Option<&str>) -> String {
 
 /// The text in clear; "" when it cannot be decrypted (wrong or missing passphrase).
 pub fn unprotect_with(stored: &str, passphrase: Option<&str>) -> String {
+    if FOREIGN_PREFIXES.iter().any(|p| stored.starts_with(p)) {
+        return String::new();
+    }
     let (hex, needs_pass) = if let Some(h) = stored.strip_prefix(ENC2_PREFIX) {
         (h, true)
     } else if let Some(h) = stored.strip_prefix(ENC_PREFIX) {
@@ -1296,7 +1624,7 @@ pub fn unprotect_with(stored: &str, passphrase: Option<&str>) -> String {
     } else {
         None
     };
-    dpapi_unprotect(&bytes, entropy)
+    os_unprotect(&bytes, entropy)
         .map(|b| String::from_utf8_lossy(&b).into_owned())
         .unwrap_or_default()
 }
@@ -1657,6 +1985,31 @@ impl Settings {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(not(windows))]
+    #[test]
+    fn desktop_entry_exec_survives_hostile_session_names() {
+        let name = "a \"b\" $HOME `x` \\ 100%";
+        let body = super::desktop_entry(std::path::Path::new("/opt/Yetty app/yetty"), name);
+        let exec = body.lines().find_map(|l| l.strip_prefix("Exec=")).unwrap();
+        // undo the Desktop Entry quoting: \\ + char -> char, %% -> %
+        let mut args = Vec::new();
+        let (mut cur, mut inq, mut it) = (String::new(), false, exec.chars().peekable());
+        while let Some(c) = it.next() {
+            match c {
+                '"' => inq = !inq,
+                '\\' if inq => cur.push(it.next().unwrap()),
+                '%' if inq && it.peek() == Some(&'%') => {
+                    it.next();
+                    cur.push('%');
+                }
+                ' ' if !inq => args.push(std::mem::take(&mut cur)),
+                c => cur.push(c),
+            }
+        }
+        args.push(cur);
+        assert_eq!(args, ["/opt/Yetty app/yetty", "--session", name]);
+    }
+
     #[test]
     fn password_roundtrip() {
         let enc = super::protect("s3cret é");

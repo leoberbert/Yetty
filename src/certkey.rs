@@ -171,17 +171,31 @@ fn certificate_der(path: &str) -> Result<Vec<u8>, String> {
     let bytes = std::fs::read(path).map_err(|e| format!("Could not read the file: {e}"))?;
     let lower = path.to_lowercase();
     if lower.ends_with(".pfx") || lower.ends_with(".p12") {
-        // Windows reads the container (without a password); the certificate comes back as base64
-        let script = format!(
-            "$c = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2('{}'); [Console]::Out.Write([Convert]::ToBase64String($c.RawData))",
-            path.replace('\'', "''")
-        );
-        let out = std::process::Command::new("powershell.exe")
-            .args(["-NoProfile", "-WindowStyle", "Hidden", "-Command", &script])
-            .output()
-            .map_err(|e| format!("Could not start PowerShell: {e}"))?;
-        let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
-        return base64_decode(&text).filter(|d| !d.is_empty()).ok_or_else(|| "The file could not be read as a certificate (a PFX with a password is not supported).".to_string());
+        #[cfg(windows)]
+        {
+            // Windows reads the container (without a password); the certificate comes back as base64
+            let script = format!(
+                "$c = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2('{}'); [Console]::Out.Write([Convert]::ToBase64String($c.RawData))",
+                path.replace('\'', "''")
+            );
+            let out = std::process::Command::new("powershell.exe")
+                .args(["-NoProfile", "-WindowStyle", "Hidden", "-Command", &script])
+                .output()
+                .map_err(|e| format!("Could not start PowerShell: {e}"))?;
+            let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            return base64_decode(&text).filter(|d| !d.is_empty()).ok_or_else(|| "The file could not be read as a certificate (a PFX with a password is not supported).".to_string());
+        }
+        #[cfg(not(windows))]
+        {
+            // OpenSSL (linked into the program) opens the container with an empty password
+            return openssl::pkcs12::Pkcs12::from_der(&bytes)
+                .and_then(|p| p.parse2(""))
+                .ok()
+                .and_then(|p| p.cert)
+                .and_then(|c| c.to_der().ok())
+                .filter(|d| !d.is_empty())
+                .ok_or_else(|| "The file could not be read as a certificate (a PFX with a password is not supported).".to_string());
+        }
     }
     if let Ok(text) = std::str::from_utf8(&bytes) {
         if let Some(start) = text.find("-----BEGIN CERTIFICATE-----") {

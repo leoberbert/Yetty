@@ -529,3 +529,29 @@ Global Options > General: "Session list sort order" is a list with Alphabeticall
 Round 37 "Sort alphabetically" check box was wrong). Logically compares numbers by value.
 Still different: blue check boxes, group titles drawn inside the border, tab scroll arrows, status bar size grip, the tree's +/- boxes and dotted
 lines in the Session Manager, window icon.
+
+## Round 39 — Linux port (branch `linux`)
+
+Goal: the Windows program, unchanged in look and behaviour, builds and runs on Linux. System-specific code is behind `cfg(windows)` /
+`cfg(not(windows))`; the Windows paths were left as they were (checked with `cargo check --target x86_64-pc-windows-msvc`, not run).
+State of every item: PENDENCIAS.md, "Versão Linux".
+- Build: `native-tls` needs OpenSSL on Linux; `openssl` with `vendored` (Linux only) links it statically. Windows still uses Schannel.
+- Paths: `config::home_dir()` (`HOME` / `USERPROFILE`), `config::data_dir()` (`$XDG_CONFIG_HOME/yetty` / `%APPDATA%\Yetty`).
+- Saved passwords: DPAPI has no Linux equivalent, and the old stub stored them in clear text. `config::linux_secret`: ChaCha20-Poly1305,
+  random 32-byte key in `<data dir>/master.key` (mode 0600, directory 0700, created once); with a configuration passphrase the key is
+  PBKDF2-HMAC-SHA256(passphrase, master key, 100 000). Stored as `lkey:` / `lkey2:` + hex(nonce ‖ ciphertext). Values of the other system
+  (`dpapi:` on Linux, `lkey:` on Windows) decrypt to "" and are never used as plain text.
+- Programs: `find_program` drops `.exe` off Windows; local shell = `$SHELL`, command field split like a shell (quotes, `\`) off Windows;
+  `conn::rdp_command` (mstsc / xfreerdp3 / xfreerdp / remmina / rdesktop); `config::print_file` (notepad /p / lp), `edit_file`
+  (notepad / xdg-open), `create_desktop_shortcut` (.lnk through PowerShell / .desktop), `open_console` (cmd / first terminal emulator),
+  `open_keygen_console`; PFX / P12 read through the linked OpenSSL; serial ports `/dev/ttyUSB0..7` as the list when none is found.
+- Dialogs: `nativedlg.rs` keeps the Win32 calls on Windows; elsewhere `rfd` (desktop portal).
+- Fonts (`sysfonts.rs`): Windows loads the same files as before. Linux: a font the person installed (`consola.ttf`, `segoeui.ttf`,
+  `segmdl2.ttf`, in a system font folder or `<data dir>/fonts`) wins; otherwise bundled free fonts with the same metrics:
+  Selawik (Segoe UI), `yetty-icons.ttf` (Fluent System Icons placed at the Segoe MDL2 code points, `tools/make-icons-font.py`), `yetty-mono.ttf`
+  (Hack with unitsPerEm 2048 → 2243, so cells are 0.550 em like Consolas, `tools/make-mono-font.py`). Symbols / CJK from Noto, DejaVu, WenQuanYi.
+  Checked against `docs/images/tela-inicial.png` and `terminal-local.png`: menu bar words within 3 px, 7.2 px per terminal column (124 columns
+  where plain Hack gave 113), toolbar icons same size and row.
+- Status bar Caps / Num Lock from `/sys/class/leds`. View > Window Transparency is disabled off Windows. Window `app_id` "yetty" (Linux only).
+- Still to do: real ssh / SFTP login, keyboard on the real window, portal dialogs, RDP / print / serial, transparency, AppImage, native `sz` /
+  `rz` / `gkermit` tests.

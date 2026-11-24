@@ -339,7 +339,7 @@ fn page_serial(ui: &mut egui::Ui, st: &mut WizardState) {
                 .show_ui(ui, |ui| {
                     let mut ports = crate::conn::serial_ports();
                     if ports.is_empty() {
-                        ports = (1..=8).map(|i| format!("COM{i}")).collect();
+                        ports = crate::conn::default_serial_ports();
                     }
                     for p in ports {
                         ui.selectable_value(&mut cfg.com_port, p.clone(), p);

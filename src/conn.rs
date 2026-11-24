@@ -60,7 +60,11 @@ pub fn term_name(emulation: &str) -> &'static str {
     }
 }
 
+/// Looks for a program in PATH (and, on Windows, in the OpenSSH folder of the system). Names are given the
+/// Windows way (`ssh.exe`); elsewhere the `.exe` is dropped.
 pub fn find_program(name: &str) -> Option<String> {
+    #[cfg(not(windows))]
+    let name = name.strip_suffix(".exe").unwrap_or(name);
     let path = std::env::var_os("PATH")?;
     for dir in std::env::split_paths(&path) {
         let p = dir.join(name);
@@ -68,16 +72,119 @@ pub fn find_program(name: &str) -> Option<String> {
             return Some(p.to_string_lossy().into_owned());
         }
     }
-    let sys = std::path::PathBuf::from(
-        std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".into()),
-    )
-    .join("System32")
-    .join("OpenSSH")
-    .join(name);
-    if sys.is_file() {
-        return Some(sys.to_string_lossy().into_owned());
+    #[cfg(windows)]
+    {
+        let sys = std::path::PathBuf::from(
+            std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".into()),
+        )
+        .join("System32")
+        .join("OpenSSH")
+        .join(name);
+        if sys.is_file() {
+            return Some(sys.to_string_lossy().into_owned());
+        }
     }
     None
+}
+
+/// The shell of a local session when none is set: `%COMSPEC%` on Windows, `$SHELL` elsewhere.
+pub fn default_shell() -> String {
+    #[cfg(windows)]
+    {
+        std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".into())
+    }
+    #[cfg(not(windows))]
+    {
+        std::env::var("SHELL")
+            .ok()
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(|| "/bin/sh".into())
+    }
+}
+
+/// The Remote Desktop client for `host:port`. Windows: `mstsc.exe`. Linux: the first of FreeRDP, Remmina
+/// and rdesktop that is installed.
+pub fn rdp_command(host: &str, port: u16) -> Result<std::process::Command, String> {
+    #[cfg(windows)]
+    {
+        let mut c = std::process::Command::new("mstsc.exe");
+        c.arg(format!("/v:{host}:{port}"));
+        Ok(c)
+    }
+    #[cfg(not(windows))]
+    {
+        for (exe, kind) in [
+            ("xfreerdp3", "freerdp"),
+            ("xfreerdp", "freerdp"),
+            ("remmina", "remmina"),
+            ("rdesktop", "rdesktop"),
+        ] {
+            let Some(path) = find_program(exe) else {
+                continue;
+            };
+            let mut c = std::process::Command::new(path);
+            match kind {
+                "freerdp" => c.arg(format!("/v:{host}:{port}")),
+                "remmina" => c.args(["-c", &format!("rdp://{host}:{port}")]),
+                _ => c.arg(format!("{host}:{port}")),
+            };
+            return Ok(c);
+        }
+        Err("no Remote Desktop client found (install FreeRDP, Remmina or rdesktop)".into())
+    }
+}
+
+/// Program and arguments of a "Command" field. Windows splits at blanks, as it always did; elsewhere quotes
+/// (`"` and `'`) and backslashes group words, as in a shell.
+fn split_command(s: &str) -> Vec<String> {
+    #[cfg(windows)]
+    {
+        s.split_whitespace().map(str::to_string).collect()
+    }
+    #[cfg(not(windows))]
+    {
+        let (mut words, mut cur) = (Vec::new(), String::new());
+        let (mut in_word, mut quote) = (false, None::<char>);
+        let mut chars = s.chars();
+        while let Some(c) = chars.next() {
+            match (quote, c) {
+                (Some(q), c) if c == q => quote = None,
+                (Some('"'), '\\') => match chars.next() {
+                    Some(n @ ('"' | '\\' | '$' | '`')) => cur.push(n),
+                    Some(n) => {
+                        cur.push('\\');
+                        cur.push(n);
+                    }
+                    None => cur.push('\\'),
+                },
+                (Some(_), c) => cur.push(c),
+                (None, '\'' | '"') => {
+                    quote = Some(c);
+                    in_word = true;
+                }
+                (None, '\\') => {
+                    if let Some(n) = chars.next() {
+                        cur.push(n);
+                        in_word = true;
+                    }
+                }
+                (None, c) if c.is_whitespace() => {
+                    if in_word {
+                        words.push(std::mem::take(&mut cur));
+                        in_word = false;
+                    }
+                }
+                (None, c) => {
+                    cur.push(c);
+                    in_word = true;
+                }
+            }
+        }
+        if in_word {
+            words.push(cur);
+        }
+        words
+    }
 }
 
 impl Connection {
@@ -304,7 +411,7 @@ fn open_pty(
             // The Windows OpenSSH sftp prints permissions as "-rw-******" (it cannot format the group and other
             // bits); the sftp that comes with Git for Windows prints them in full, as SecureCRT does, so it is
             // preferred for SFTP sessions when it is installed.
-            let git_sftp = if cfg.protocol == Protocol::Sftp {
+            let git_sftp = if cfg!(windows) && cfg.protocol == Protocol::Sftp {
                 ["ProgramFiles", "ProgramFiles(x86)", "LOCALAPPDATA"]
                     .iter()
                     .filter_map(|v| std::env::var(v).ok())
@@ -325,7 +432,11 @@ fn open_pty(
                 None
             };
             let path = git_sftp.or_else(|| find_program(exe)).ok_or_else(|| {
-                format!("The OpenSSH client ({exe}) was not found. Turn it on in Settings > Apps > Optional features.")
+                if cfg!(windows) {
+                    format!("The OpenSSH client ({exe}) was not found. Turn it on in Settings > Apps > Optional features.")
+                } else {
+                    format!("The OpenSSH client ({}) was not found. Install it (for example the openssh-client package).", exe.trim_end_matches(".exe"))
+                }
             })?;
             if cfg.host.trim().is_empty() {
                 return Err("Enter the hostname.".into());
@@ -481,16 +592,16 @@ fn open_pty(
         }
         _ => {
             let shell = if cfg.shell_command.trim().is_empty() {
-                std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".into())
+                default_shell()
             } else {
                 cfg.shell_command.trim().to_string()
             };
-            let mut parts = shell.split_whitespace();
-            let mut c = CommandBuilder::new(parts.next().unwrap_or("cmd.exe"));
+            let mut parts = split_command(&shell).into_iter();
+            let mut c = CommandBuilder::new(parts.next().unwrap_or_else(default_shell));
             for p in parts {
                 c.arg(p);
             }
-            if let Some(home) = std::env::var_os("USERPROFILE") {
+            if let Some(home) = crate::config::home_dir() {
                 c.cwd(home);
             }
             c
@@ -813,6 +924,20 @@ fn open_serial(
         None,
     );
     Ok(())
+}
+
+/// Ports offered when the system lists none: COM1..COM8 on Windows, /dev/ttyUSB0..7 elsewhere.
+/// Never empty (the first is the default of a new serial session).
+pub fn default_serial_ports() -> Vec<String> {
+    (0..8)
+        .map(|i| {
+            if cfg!(windows) {
+                format!("COM{}", i + 1)
+            } else {
+                format!("/dev/ttyUSB{i}")
+            }
+        })
+        .collect()
 }
 
 pub fn serial_ports() -> Vec<String> {

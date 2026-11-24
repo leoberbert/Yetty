@@ -1,4 +1,5 @@
-//! The Windows "Open", "Save as" and "Browse for folder" dialogs, called directly (fast: no helper process).
+//! The system's "Open", "Save as" and "Browse for folder" dialogs. Windows: called directly (fast: no helper
+//! process). Linux: the desktop portal (`rfd`), so the dialog is the one of the person's desktop (GNOME, KDE...).
 
 #[cfg(windows)]
 mod win {
@@ -134,8 +135,11 @@ pub fn open_file(title: &str, start_dir: Option<&str>) -> Option<String> {
     }
     #[cfg(not(windows))]
     {
-        let _ = (title, start_dir);
-        None
+        let mut d = rfd::FileDialog::new().set_title(title);
+        if let Some(dir) = start_dir.filter(|d| std::path::Path::new(d).is_dir()) {
+            d = d.set_directory(dir);
+        }
+        d.pick_file().map(|p| p.to_string_lossy().into_owned())
     }
 }
 
@@ -149,8 +153,15 @@ pub fn open_script(title: &str) -> Option<String> {
     }
     #[cfg(not(windows))]
     {
-        let _ = title;
-        None
+        rfd::FileDialog::new()
+            .set_title(title)
+            .add_filter(
+                "Script Files",
+                &["vbs", "vbe", "js", "pl", "py", "ps1", "txt"],
+            )
+            .add_filter("All Files", &["*"])
+            .pick_file()
+            .map(|p| p.to_string_lossy().into_owned())
     }
 }
 
@@ -161,8 +172,10 @@ pub fn save_file(title: &str) -> Option<String> {
     }
     #[cfg(not(windows))]
     {
-        let _ = title;
-        None
+        rfd::FileDialog::new()
+            .set_title(title)
+            .save_file()
+            .map(|p| p.to_string_lossy().into_owned())
     }
 }
 
@@ -198,7 +211,9 @@ pub fn pick_folder(title: &str) -> Option<String> {
     }
     #[cfg(not(windows))]
     {
-        let _ = title;
-        None
+        rfd::FileDialog::new()
+            .set_title(title)
+            .pick_folder()
+            .map(|p| p.to_string_lossy().into_owned())
     }
 }

@@ -183,6 +183,8 @@ pub struct Zmodem {
     sent_total: usize,
     rpos_sent: bool,
     sinit: bool,
+    /// The next subpacket is a retransmitted ZFILE info block, not file data.
+    dup_file: bool,
     batch_total: usize,
 }
 
@@ -211,6 +213,7 @@ impl Zmodem {
             sent_total: 0,
             rpos_sent: false,
             sinit: false,
+            dup_file: false,
             batch_total: 0,
         }
     }
@@ -605,7 +608,11 @@ impl Zmodem {
                     self.want_sub = Some(c32);
                 }
                 (State::RWaitFile, ZFILE) => self.want_sub = Some(c32),
-                (State::RWaitData, ZFILE) => self.want_sub = Some(c32),
+                (State::RWaitData, ZFILE) => {
+                    // the sender repeated ZFILE (our ZRPOS was slow): its info block is not data
+                    self.dup_file = true;
+                    self.want_sub = Some(c32);
+                }
                 (State::RWaitData, ZDATA) => {
                     if pos as usize == self.out_file.len() {
                         self.want_sub = Some(c32);
@@ -633,6 +640,9 @@ impl Zmodem {
                 (_, ZABORT) => self.fail("The sender aborted the transfer"),
                 _ => {}
             },
+            Item::Sub { .. } if self.dup_file => {
+                self.dup_file = false;
+            }
             Item::Sub { ok, .. } if self.sinit => {
                 // the sender's attention string / flags (ZSINIT) are acknowledged and ignored
                 self.sinit = false;
@@ -723,6 +733,24 @@ impl Zmodem {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A repeated ZFILE (the sender's timer fired before our ZRPOS arrived) must not put its
+    /// info block into the file.
+    #[test]
+    fn repeated_zfile_info_block_is_not_file_data() {
+        let dir = std::env::temp_dir().join("yetty_zm_dup_zfile");
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut rx = Zmodem::new_receive(dir.clone());
+        let mut zfile = bin_header(ZFILE, [0; 4]);
+        zfile.extend(subpacket(b"a.bin\x003 0 100644", ZCRCW));
+        rx.feed(&zfile);
+        rx.feed(&zfile);
+        let mut data = bin_header(ZDATA, [0; 4]);
+        data.extend(subpacket(b"abc", ZCRCE));
+        data.extend(bin_header(ZEOF, [3, 0, 0, 0]));
+        rx.feed(&data);
+        assert_eq!(std::fs::read(dir.join("a.bin")).unwrap(), b"abc");
+    }
 
     fn run(files: Vec<PathBuf>, out_dir: PathBuf, damage: bool) {
         let mut tx = Zmodem::new_send(files).unwrap();

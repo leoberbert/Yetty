@@ -68,6 +68,16 @@ pub enum SshPrompt {
     Password,
 }
 
+/// A chunk of host output up to this size, arriving when nothing is held for jump scroll, is interactive (a key echo,
+/// a prompt) and is never delayed.
+const JUMP_BULK_BYTES: usize = 1024;
+
+/// Whether jump scroll may hold this chunk back: bulk output, or anything arriving behind output already held (order
+/// must be kept). A small chunk with nothing held before it would delay every typed character by the jump interval.
+fn jump_holds(pending: usize, chunk: usize) -> bool {
+    pending > 0 || chunk > JUMP_BULK_BYTES
+}
+
 pub struct Session {
     pub id: u64,
     pub cfg: SessionConfig,
@@ -1021,7 +1031,8 @@ impl Session {
                     if !ssh_like {
                         self.note_text(&d);
                     }
-                    let d = if self.cfg.jump_scroll {
+                    let d = if self.cfg.jump_scroll && jump_holds(self.jump_pending.len(), d.len())
+                    {
                         self.jump_pending.extend_from_slice(&d);
                         if !self.jump_due() {
                             self.ctx.request_repaint_after(Duration::from_millis(30));
@@ -2820,6 +2831,19 @@ fn altgr_char(_key: egui::Key, _shift: bool) -> Option<char> {
 }
 
 #[cfg(test)]
+mod jump_scroll_tests {
+    use super::jump_holds;
+
+    #[test]
+    fn key_echo_is_never_held_but_bulk_and_its_tail_are() {
+        assert!(!jump_holds(0, 17)); // a typed character's echo
+        assert!(!jump_holds(0, 1024));
+        assert!(jump_holds(0, 1025)); // bulk output
+        assert!(jump_holds(5000, 17)); // behind held output: order is kept
+    }
+}
+
+#[cfg(test)]
 mod altscreen_tests {
     /// Running a full-screen program (less) and leaving it must bring the shell screen back untouched,
     /// with the new prompt on its own line.
@@ -2961,16 +2985,30 @@ mod real_mouse {
         parser: vt100::Parser,
     }
 
-    fn wsl_path(p: &std::path::Path) -> String {
-        let s = p.to_string_lossy().replace('\\', "/");
-        format!("/mnt/{}{}", s[..1].to_lowercase(), &s[2..])
+    fn shell_path(p: &std::path::Path) -> String {
+        if cfg!(windows) {
+            let s = p.to_string_lossy().replace('\\', "/");
+            format!("/mnt/{}{}", s[..1].to_lowercase(), &s[2..])
+        } else {
+            p.to_string_lossy().into_owned()
+        }
+    }
+
+    /// Runs a shell line in WSL on Windows, directly elsewhere.
+    fn shell_cmd(line: &str) -> Command {
+        if cfg!(windows) {
+            let mut c = Command::new("wsl.exe");
+            c.args(["-e", "sh", "-c", line]);
+            c
+        } else {
+            let mut c = Command::new("sh");
+            c.args(["-c", line]);
+            c
+        }
     }
 
     fn wsl(cmd: &str) -> String {
-        let o = Command::new("wsl.exe")
-            .args(["-e", "sh", "-c", cmd])
-            .output()
-            .unwrap();
+        let o = shell_cmd(cmd).output().unwrap();
         String::from_utf8_lossy(&o.stdout).trim().to_string()
     }
 
@@ -2988,9 +3026,8 @@ mod real_mouse {
     impl Prog {
         /// `cmd` runs on a pty of 24x80 in `d`.
         fn start(d: &std::path::Path, cmd: &str) -> Prog {
-            let line = format!("cd '{}' && TERM=xterm-256color script -qfec \"stty rows 24 cols 80; {}\" /dev/null", wsl_path(d), cmd);
-            let mut child = Command::new("wsl.exe")
-                .args(["-e", "sh", "-c", &line])
+            let line = format!("cd '{}' && TERM=xterm-256color script -qfec \"stty rows 24 cols 80; {}\" /dev/null", shell_path(d), cmd);
+            let mut child = shell_cmd(&line)
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::null())
