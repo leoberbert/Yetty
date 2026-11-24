@@ -948,4 +948,77 @@ mod real {
             &data,
         );
     }
+
+    /// ssh to a remote lab machine: `YETTY_LAB=user@host` and `SSHPASS` (password) in the environment.
+    /// The remote has lrzsz installed as `lrzsz-sz` / `lrzsz-rz` (Arch packaging).
+    fn lab() -> Option<String> {
+        std::env::var("YETTY_LAB").ok().filter(|h| !h.is_empty())
+    }
+
+    fn lab_ssh(host: &str, remote: &str) -> String {
+        format!(
+            "sshpass -e ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR {host} '{remote}'"
+        )
+    }
+
+    #[test]
+    #[ignore]
+    fn real_zmodem_receive_from_remote_sz() {
+        let Some(host) = lab() else { return };
+        let d = work("lab_sz");
+        let data = payload();
+        let put = format!(
+            "cat > /tmp/ytr_file.bin < '{}'",
+            d.join("in").join("file.bin").display()
+        );
+        std::fs::write(d.join("in").join("file.bin"), &data).unwrap();
+        let st = shell(&format!(
+            "sshpass -e ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR {host} 'cat > /tmp/ytr_file.bin' < '{}'",
+            d.join("in").join("file.bin").display()
+        ))
+        .status()
+        .unwrap();
+        assert!(st.success(), "upload to lab failed ({put})");
+        let mut t = Transfer::new_zmodem_receive(d.join("out"));
+        let info = drive(
+            &d.join("in"),
+            &lab_ssh(
+                &host,
+                "cd /tmp && cp ytr_file.bin file.bin && lrzsz-sz -b file.bin",
+            ),
+            &mut t,
+        );
+        check(
+            "lab sz -> Yetty",
+            &t,
+            &info,
+            &d.join("out").join("file.bin"),
+            &data,
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn real_zmodem_send_to_remote_rz() {
+        let Some(host) = lab() else { return };
+        let d = work("lab_rz");
+        let data = payload();
+        let src = d.join("in").join("sent.bin");
+        std::fs::write(&src, &data).unwrap();
+        let mut t = Transfer::new_zmodem_send(vec![src.clone()]).unwrap();
+        let info = drive(
+            &d.join("out"),
+            &lab_ssh(
+                &host,
+                "mkdir -p /tmp/ytr_in && cd /tmp/ytr_in && rm -f sent.bin && lrzsz-rz -b -y",
+            ),
+            &mut t,
+        );
+        assert!(t.done && !t.failed, "Yetty -> lab rz: {info}");
+        let got = shell(&lab_ssh(&host, "cat /tmp/ytr_in/sent.bin"))
+            .output()
+            .unwrap()
+            .stdout;
+        assert!(got == data, "lab rz: content differs ({} bytes)", got.len());
+    }
 }

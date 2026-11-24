@@ -89,3 +89,31 @@ Método: `YETTY_SHOT_THEME=<tema> YETTY_SHOT_SCENE=<cena> yetty --screenshot f.p
 ## Regressão automatizada no Linux (2026-11-23)
 
 Build release `--locked`, `cargo test` (28 passam, 8 `#[ignore]`), os 8 testes reais com `sz`/`rz`/`gkermit`/`vim`/`tmux` (8/8), clippy `-D warnings`, `cargo fmt --check` e `cargo check` do alvo Windows: todos limpos. 52 cenas/páginas (todas as páginas de Global Options e de Session Options, assistente, Quick Connect, Command Window/Manager, Keymap, Host key, senha, tile, grupos) abrem sem pânico e renderizam. Telnet (com negociação IAC), Raw e Rlogin (handshake com usuário/terminal) conectados a servidores locais; SSH e SFTP a um sshd real; serial por par de pty; AppImage reconstruído, `sha256` confere e inicia. O que fica para teste manual está em `docs/ROTEIRO-REGRESSAO-LINUX.md`.
+
+## Laboratório CachyOS + KDE Plasma (Wayland) — 2026-11-23
+
+VM `192.168.122.78` (CachyOS, kernel 7.3, glibc 2.44, KDE Plasma/Wayland, teclado `br` ABNT2, openssh 10.6). Credenciais de teste só no ambiente (`SSHPASS`), nunca no repositório. Instalados na VM com pacman: `lrzsz` (binários `lrzsz-sz`/`lrzsz-rz`), `tmux`, `htop`, `ydotool` (e o `ydotoold` foi parado no fim); `telnet.socket` foi ligado só para o teste e parado (a porta 23 não é alcançável de fora: firewall; usei túnel `ssh -L`).
+
+**Yetty (este computador) → CachyOS**
+
+| Teste | Resultado |
+|---|---|
+| SSH com senha salva (resposta automática ao `password:`) | Fechado: entra no fish, `fastfetch` desenhado com cores e arte ASCII |
+| SSH sem senha salva | Fechado: janela "Enter Secure Shell Password" com "Save password" / OK / Skip / Cancel |
+| SSH com senha errada | Fechado: `Permission denied, please try again.` |
+| SFTP com senha | Fechado: `Connected to 192.168.122.78.` + prompt `sftp>` |
+| Telnet (via `ssh -L 2323`) | Fechado: negociação IAC ok, banner `Linux 7.3.4-1-cachyos ... login:` |
+| Zmodem contra lrzsz 0.13.1 real, via ssh, 200 000 bytes | Fechado, nos dois sentidos (`YETTY_LAB=leo@192.168.122.78 SSHPASS=… cargo test real_zmodem_ -- --ignored --test-threads=1`; testes `real_zmodem_receive_from_remote_sz` / `real_zmodem_send_to_remote_rz`, ignorados sem `YETTY_LAB`) |
+
+**Yetty rodando dentro do CachyOS/KDE** (binário release copiado; capturas com `spectacle`; entrada real pelo `ydotool`)
+
+| Teste | Resultado |
+|---|---|
+| Abre e renderiza no KDE Wayland (Mesa/Zink sem GPU: avisos `MESA-EGL`/`ZINK` inofensivos) | Fechado; AppImage também inicia (`APPIMAGE_EXTRACT_AND_RUN=1`) |
+| L-19 transparência no compositor real | **Fechado:** View > Window Transparency (Alt+V, W) deixa a janela translúcida, texto incluído, com o papel de parede aparecendo |
+| L-11 teclado ABNT2 | **Fechado (capturado byte a byte):** letras, maiúsculas, AltGr (`/ æ « ¹ ² ³ £ ¢ ¬ ª º`), teclas mortas (`´ ~ ¨ ^`), `ç`, `\ | / ? ;` e Ctrl+letras chegam idênticos aos do Konsole. Setas, Home/End (`ESC[1~`/`ESC[4~`, estilo SecureCRT; o Konsole manda `ESC[H`/`ESC[F`), Ins/Del/PgUp/PgDn e F1–F12 com Shift/Ctrl com os códigos dos `.key` do original. Ctrl+V/Ctrl+X não chegam ao programa: são colar/recortar (e o "Confirm Multi-line Paste" captura as teclas seguintes) |
+| Alt+V abre o menu View, itens com mnemônico sublinhado | Fechado |
+| Sessões salvas com senha salva (SSH, SFTP) e Telnet para `127.0.0.1` | Fechado, mesmo resultado de fora |
+| Ícone da janela | **Achado:** no Wayland o ícone do `with_icon` é ignorado pelo KDE (aparece um "W" amarelo genérico). Com `yetty.desktop` + `yetty.png` instalados (`app_id` = `yetty`) o ícone do yeti aparece na barra de título e na barra de tarefas. O AppImage sozinho não integra: precisa de AppImageLauncher ou instalar o `.desktop`/ícone |
+
+Ainda sem teste: clique/arrasto do mouse (o `ydotool mousemove -a` não acertou a posição), portal de arquivos do KDE (`xdg-desktop-portal-kde`), impressão, RDP (`krdc`/`freerdp` não instalados na VM), serial com hardware.
