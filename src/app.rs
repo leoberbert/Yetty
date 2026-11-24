@@ -1725,6 +1725,29 @@ impl YettyApp {
                     if let Some(s) = app.sessions.last_mut() {
                         s.parser.process("check \u{2713} \u{2714} arrows \u{2192} \u{2190}\r\ncjk \u{6f22}\u{5b57} \u{65e5}\u{672c}\u{8a9e} \u{d55c}\u{ae00}\r\npath /etc/a?b @ \\ |\r\n-rwxrwxr-x 1 ubuntu ubuntu      519 nov  7  2025  \x1b[1;32mteste2.sh\x1b[0m\r\ndrwxrwxr-x 1 ubuntu ubuntu       36 dez 11  2025  \x1b[1;34mcatalogo\x1b[0m\r\n-rw-rw-r-- 1 ubuntu ubuntu 28948275 jan  5  2026  \x1b[1;31mk6-v1.5.0.tar.gz\x1b[0m\r\n".as_bytes());
                     }
+                } else if let Some(name) = scene.strip_prefix("colors:") {
+                    // every ANSI colour (normal and bright, as foreground and as background) under one colour scheme
+                    let mut cfg = app.settings.defaults_for(Protocol::LocalShell);
+                    cfg.name = name.into();
+                    cfg.color_scheme = name.into();
+                    app.open_session(cfg, &cc.egui_ctx);
+                    if let Some(s) = app.sessions.last_mut() {
+                        let mut t = String::from("default text on the scheme background\r\n");
+                        for base in [30, 90] {
+                            for i in 0..8 {
+                                t += &format!("\x1b[{}m{:>3} \x1b[0m", base + i, base + i);
+                            }
+                            t += "\r\n";
+                        }
+                        for base in [40, 100] {
+                            for i in 0..8 {
+                                t += &format!("\x1b[{}m{:>3} \x1b[0m", base + i, base + i);
+                            }
+                            t += "\r\n";
+                        }
+                        t += "\x1b[1mbold\x1b[0m \x1b[4munderline\x1b[0m \x1b[7mreverse\x1b[0m \x1b[1;31mbold red\x1b[0m \x1b[38;5;208m256:208\x1b[0m \x1b[38;2;10;200;120mtruecolor\x1b[0m\r\n";
+                        s.parser.process(t.as_bytes());
+                    }
                 } else if scene.starts_with("cmd") {
                     // cmdwin = Command Window; cmdman = Command Manager; cmddlg = Command Properties
                     app.settings.show_command_window = scene == "cmdwin";
@@ -7881,6 +7904,13 @@ impl YettyApp {
         };
         self.frames += 1;
         ctx.request_repaint();
+        // Test hook: switch theme part-way through, the same two calls the View > Themes menu makes
+        if self.frames == 20 {
+            if let Ok(t) = std::env::var("YETTY_SHOT_THEME_THEN") {
+                self.settings.theme = t.clone();
+                apply_theme(ctx, &t);
+            }
+        }
         let wanted = std::env::var("YETTY_SHOT_FRAMES")
             .ok()
             .and_then(|v| v.parse().ok())
@@ -8074,7 +8104,16 @@ impl eframe::App for YettyApp {
             central_fill
         };
         let status_fill = if dark {
-            Color32::from_gray(0x33)
+            // 0x33 on the grey themes (measured); a tinted theme keeps its tint, a little lighter than its panel
+            if panel_fill.r() == panel_fill.g() && panel_fill.g() == panel_fill.b() {
+                Color32::from_gray(0x33)
+            } else {
+                Color32::from_rgb(
+                    panel_fill.r() + 0x14,
+                    panel_fill.g() + 0x14,
+                    panel_fill.b() + 0x14,
+                )
+            }
         } else {
             panel_fill
         };

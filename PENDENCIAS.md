@@ -74,3 +74,14 @@ Legenda: **Fechado** = feito e verificado como indicado; **Não exercitado** = e
 | L-22 | CI | Fechado (não executado) | `ci.yml` ganhou `build-test-linux` e `lint-linux` (ubuntu-latest); os jobs de Windows seguem como estavam. Ainda não rodaram no GitHub |
 | L-23 | Clipboard, arrastar arquivos (SFTP), roda do mouse, relato de mouse com a janela real | Não exercitado | Vêm do eframe/winit; nada foi mudado, mas nada foi testado no Linux |
 | L-24 | X11 puro / XWayland | Não exercitado | Só rodei no Wayland (`WAYLAND_DISPLAY=wayland-1`). `with_app_id("yetty")` vale para os dois |
+
+## Temas e esquemas de cores (verificação no Linux)
+
+Método: `YETTY_SHOT_THEME=<tema> YETTY_SHOT_SCENE=<cena> yetty --screenshot f.png` (com `XDG_CONFIG_HOME` vazio) em 7 temas × 6 cenas (terminal, Session Manager, Command Window, Global Options, Quick Connect, tile), e `YETTY_SHOT_SCENE=colors:<esquema>` para os 22 esquemas de cores (16 cores de texto e de fundo, negrito, sublinhado, reverso, 256 e truecolor).
+
+| ID | Item | Status | Observação |
+|---|---|---|---|
+| T-01 | Troca de tema com o programa aberto (View > Themes) | Fechado | `YETTY_SHOT_THEME_THEN` troca o tema no quadro 20 com as mesmas duas chamadas do menu (`settings.theme` + `apply_theme`). Em 4 pares (escuro→claro→azul→Carbon→claro) × 5 cenas, a imagem final é idêntica à de quem começou direto no tema final; as únicas diferenças são o cursor piscando. Exceção: no Quick Connect, depois da troca, o campo Hostname aparece com o anel de foco (efeito do egui ao trocar o tema com o diálogo aberto; só o anel, na cor certa) |
+| T-02 | Barra de status no tema VS Blue | Fechado | Ficava cinza `333333` sobre painéis azuis. Agora o tema com tom usa o painel + `0x14` por canal (`3d4d69`); os temas cinza continuam em `333333` (o valor medido) |
+| T-03 | Esquemas de cores do terminal | Fechado | Os 22 esquemas mudam fundo, texto e as 16 cores (paleta do esquema, como na medida do P-03); cursor, sublinhado, reverso e 256/truecolor legíveis em esquemas claros e escuros. Cores iguais ao fundo ficam invisíveis (ex.: SGR 30 em fundo preto), como em qualquer terminal |
+| T-04 | Cores dos temas Carbon, VS Blue, claros (System/Native/VS White/Office White) | Estimado | Só o VS Dark foi medido no SecureCRT (`1f1f1f`, status `333333`). Os outros são valores escolhidos aqui; sem o SecureCRT à mão não dá para conferir. System, Native, VS White e Office White são idênticos entre si |
