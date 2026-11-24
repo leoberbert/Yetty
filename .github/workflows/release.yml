@@ -8,8 +8,17 @@ on:
         description: "Versão a publicar (ex.: 0.1.0). Deve ser igual à de Cargo.toml."
         required: true
         type: string
+      platform:
+        description: "Plataforma a gerar. Uma execução só de uma plataforma anexa o arquivo à release v<versão> se ela já existir."
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - windows
+          - linux
       prerelease:
-        description: "Marcar como pré-release"
+        description: "Marcar como pré-release (só vale ao criar a release)"
         required: false
         default: false
         type: boolean
@@ -48,11 +57,7 @@ jobs:
             echo "::error::Cargo.toml tem versão $CARGO_VERSION, mas foi pedida $VERSION. Atualize Cargo.toml (e Cargo.lock) via PR antes."
             exit 1
           fi
-          if git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null 2>&1; then
-            echo "::error::A tag v$VERSION já existe."
-            exit 1
-          fi
-
+          # A tag já existir é normal ao gerar a segunda plataforma; o publish falha se o arquivo da mesma plataforma já estiver na release.
   # Mesmos testes do PR.
   test:
     name: Testes
@@ -63,6 +68,7 @@ jobs:
   linux:
     name: AppImage (Linux)
     needs: [validate, test]
+    if: inputs.platform == 'all' || inputs.platform == 'linux'
     runs-on: ubuntu-22.04
     timeout-minutes: 45
     env:
@@ -91,16 +97,14 @@ jobs:
           name: linux-appimage
           path: dist/*
 
-  release:
-    name: Gerar e publicar release
-    needs: [validate, test, linux]
+  windows:
+    name: Zip (Windows)
+    needs: [validate, test]
+    if: inputs.platform == 'all' || inputs.platform == 'windows'
     runs-on: windows-latest
     timeout-minutes: 45
-    permissions:
-      contents: write # criar tag e release
     env:
       VERSION: ${{ inputs.version }}
-      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
 
@@ -124,17 +128,44 @@ jobs:
           sha256sum "$NAME.zip" > "$NAME.zip.sha256"
           cat "$NAME.zip.sha256"
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-zip
+          path: |
+            dist/*.zip
+            dist/*.sha256
+
+  # Roda quando as plataformas pedidas deram certo (a que não foi pedida fica "skipped").
+  publish:
+    name: Publicar GitHub Release
+    needs: [validate, test, linux, windows]
+    if: ${{ !cancelled() && !failure() }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # criar tag e release
+    env:
+      VERSION: ${{ inputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
-          name: linux-appimage
           path: dist
+          merge-multiple: true
 
-      - name: Publicar GitHub Release
-        shell: bash
+      - name: Publicar
         env:
           PRERELEASE: ${{ inputs.prerelease }}
         run: |
           set -euo pipefail
-          FLAGS=(--target "$GITHUB_SHA" --title "Yetty v${VERSION}" --generate-notes)
-          if [ "$PRERELEASE" = "true" ]; then FLAGS+=(--prerelease); fi
-          gh release create "v${VERSION}" dist/*.zip dist/*.AppImage dist/*.sha256 "${FLAGS[@]}"
+          ls -l dist
+          TAG="v${VERSION}"
+          # sem --clobber: reenviar a mesma plataforma para uma release que já a tem falha, em vez de sobrescrever
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/*
+          else
+            FLAGS=(--target "$GITHUB_SHA" --title "Yetty $TAG" --generate-notes)
+            if [ "$PRERELEASE" = "true" ]; then FLAGS+=(--prerelease); fi
+            gh release create "$TAG" dist/* "${FLAGS[@]}"
+          fi
