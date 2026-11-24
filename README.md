@@ -67,7 +67,7 @@ Quem trabalha com servidores, redes ou equipamentos acaba com dezenas de janelas
 
 O Yetty nasceu da vontade de ter, de forma livre e gratuita, a praticidade de clientes de terminal consagrados, como o **SecureCRT** e o **QuadCRT**: sessões organizadas em pastas, abas, painéis, transferência de arquivos e muitos detalhes que ajudam no dia a dia de quem administra sistemas.
 
-Não é um clone nem um produto desses programas. É um projeto independente, escrito do zero em Rust, que se inspirou neles na organização e nos atalhos, mantendo o próprio código e o próprio visual. SecureCRT e os demais nomes citados pertencem aos seus respectivos donos, e o Yetty não tem ligação com eles.
+Não é um clone nem um produto desses programas. É um projeto independente, escrito em Rust, inspirado no comportamento e na organização desses programas, com código próprio. SecureCRT e os demais nomes citados pertencem aos seus respectivos donos, e o Yetty não tem ligação com eles.
 
 ---
 
