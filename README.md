@@ -5,7 +5,8 @@
 <h1 align="center">Yetty</h1>
 
 <p align="center">
-  Terminal e gerenciador de sessões para Windows e Linux: SSH2, SFTP, Telnet, RLogin, TCP cru, porta serial, shell local e RDP, em uma única janela com abas, painéis e scripts.
+  <strong>Todas as suas conexões em uma só janela.</strong><br>
+  Um terminal gratuito e de código aberto, para Windows e Linux, que reúne SSH, SFTP, Telnet, porta serial e muito mais, com abas, sessões salvas e um visual limpo.
 </p>
 
 <p align="center">
@@ -19,6 +20,8 @@
 
 ## Sumário
 
+- [Por que o Yetty](#por-que-o-yetty)
+- [Inspiração](#inspiração)
 - [Visão geral](#visão-geral)
 - [Download e instalação](#download-e-instalação)
 - [Requisitos](#requisitos)
@@ -46,9 +49,31 @@
 
 ---
 
+## Por que o Yetty
+
+Quem trabalha com servidores, redes ou equipamentos acaba com dezenas de janelas de terminal abertas, senhas anotadas em algum lugar e a mesma conexão digitada todo dia. O Yetty existe para resolver isso:
+
+- **Salve uma vez, conecte sempre.** Guarde servidores e equipamentos em pastas, com usuário e senha (protegida), e abra com dois cliques.
+- **Tudo na mesma janela.** Cada conexão vira uma aba, ou fica lado a lado com outras. Mande o mesmo comando para vários servidores de uma vez.
+- **Do servidor na nuvem ao equipamento na bancada.** SSH, SFTP, Telnet, RLogin, TCP cru, porta serial, shell local e área de trabalho remota (RDP).
+- **Transfira arquivos sem sair do terminal.** Arrastar e soltar no SFTP, Zmodem, Kermit, Xmodem e Ymodem, e um servidor TFTP embutido.
+- **Automatize o que se repete.** Scripts, gravação de teclas, biblioteca de comandos prontos e mapa de teclas personalizável.
+- **Leve e sem complicação.** Um único arquivo para baixar: no Windows, um `.zip` com o programa; no Linux, um AppImage que roda em praticamente qualquer distribuição. Sem instalador e sem conta.
+- **Seu, de graça.** Código aberto sob licença MIT, sem anúncios e sem coleta de dados.
+
+---
+
+## Inspiração
+
+O Yetty nasceu da vontade de ter, de forma livre e gratuita, a praticidade de clientes de terminal consagrados, como o **SecureCRT** e o **QuadCRT**: sessões organizadas em pastas, abas, painéis, transferência de arquivos e muitos detalhes que ajudam no dia a dia de quem administra sistemas.
+
+Não é um clone nem um produto desses programas. É um projeto independente, escrito do zero em Rust, que se inspirou neles na organização e nos atalhos, mantendo o próprio código e o próprio visual. SecureCRT e os demais nomes citados pertencem aos seus respectivos donos, e o Yetty não tem ligação com eles.
+
+---
+
 ## Visão geral
 
-O Yetty reúne em uma só janela os clientes de terminal que normalmente ficam espalhados pelo Windows e pelo Linux. Cada conexão é uma **sessão** salva em um gerenciador com pastas, e cada sessão aberta vira uma **aba** ou um **painel**. O programa é escrito em Rust, com a interface em [egui](https://github.com/emilk/egui) (via `eframe`) e emulação de terminal com `vt100`.
+Em termos técnicos: cada conexão é uma **sessão** salva em um gerenciador com pastas, e cada sessão aberta vira uma **aba** ou um **painel**. O programa é escrito em Rust, com a interface em [egui](https://github.com/emilk/egui) (via `eframe`) e emulação de terminal com `vt100`.
 
 Pontos de design:
 
