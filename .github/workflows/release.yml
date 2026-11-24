@@ -59,9 +59,41 @@ jobs:
     needs: validate
     uses: ./.github/workflows/ci.yml
 
+  # glibc do ubuntu-22.04 (2.35): o AppImage roda em distribuições dessa idade ou mais novas.
+  linux:
+    name: AppImage (Linux)
+    needs: [validate, test]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    env:
+      VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain Rust estável
+        run: rustup toolchain install stable --profile minimal
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build release
+        run: cargo build --release --locked
+
+      - name: Gerar AppImage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: |
+          curl -fsSL -o appimagetool https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool
+          APPIMAGETOOL="$PWD/appimagetool" packaging/linux/build-appimage.sh "$VERSION"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-appimage
+          path: dist/*
+
   release:
     name: Gerar e publicar release
-    needs: [validate, test]
+    needs: [validate, test, linux]
     runs-on: windows-latest
     timeout-minutes: 45
     permissions:
@@ -92,6 +124,11 @@ jobs:
           sha256sum "$NAME.zip" > "$NAME.zip.sha256"
           cat "$NAME.zip.sha256"
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-appimage
+          path: dist
+
       - name: Publicar GitHub Release
         shell: bash
         env:
@@ -100,4 +137,4 @@ jobs:
           set -euo pipefail
           FLAGS=(--target "$GITHUB_SHA" --title "Yetty v${VERSION}" --generate-notes)
           if [ "$PRERELEASE" = "true" ]; then FLAGS+=(--prerelease); fi
-          gh release create "v${VERSION}" dist/*.zip dist/*.sha256 "${FLAGS[@]}"
+          gh release create "v${VERSION}" dist/*.zip dist/*.AppImage dist/*.sha256 "${FLAGS[@]}"

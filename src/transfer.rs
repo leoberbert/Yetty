@@ -824,7 +824,24 @@ mod real {
     }
 
     fn check(name: &str, t: &Transfer, info: &str, out_file: &Path, want: &[u8]) {
-        let got = std::fs::read(out_file).unwrap_or_default();
+        // gkermit sends names in upper case; Windows (WSL /mnt) hid that, Linux does not
+        let wanted = out_file
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .to_lowercase();
+        let found = std::fs::read_dir(out_file.parent().unwrap())
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|e| e.path())
+            .find(|p| {
+                p.file_name()
+                    .is_some_and(|n| n.to_string_lossy().to_lowercase() == wanted)
+            });
+        let got = found
+            .and_then(|p| std::fs::read(p).ok())
+            .unwrap_or_default();
         println!(
             "{name}: done={} failed={} bytes={} -> {}",
             t.done,

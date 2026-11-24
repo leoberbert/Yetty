@@ -734,6 +734,24 @@ impl Zmodem {
 mod tests {
     use super::*;
 
+    /// A repeated ZFILE (the sender's timer fired before our ZRPOS arrived) must not put its
+    /// info block into the file.
+    #[test]
+    fn repeated_zfile_info_block_is_not_file_data() {
+        let dir = std::env::temp_dir().join("yetty_zm_dup_zfile");
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut rx = Zmodem::new_receive(dir.clone());
+        let mut zfile = bin_header(ZFILE, [0; 4]);
+        zfile.extend(subpacket(b"a.bin\x003 0 100644", ZCRCW));
+        rx.feed(&zfile);
+        rx.feed(&zfile);
+        let mut data = bin_header(ZDATA, [0; 4]);
+        data.extend(subpacket(b"abc", ZCRCE));
+        data.extend(bin_header(ZEOF, [3, 0, 0, 0]));
+        rx.feed(&data);
+        assert_eq!(std::fs::read(dir.join("a.bin")).unwrap(), b"abc");
+    }
+
     fn run(files: Vec<PathBuf>, out_dir: PathBuf, damage: bool) {
         let mut tx = Zmodem::new_send(files).unwrap();
         let mut rx = Zmodem::new_receive(out_dir);
