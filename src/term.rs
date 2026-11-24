@@ -68,6 +68,16 @@ pub enum SshPrompt {
     Password,
 }
 
+/// A chunk of host output up to this size, arriving when nothing is held for jump scroll, is interactive (a key echo,
+/// a prompt) and is never delayed.
+const JUMP_BULK_BYTES: usize = 1024;
+
+/// Whether jump scroll may hold this chunk back: bulk output, or anything arriving behind output already held (order
+/// must be kept). A small chunk with nothing held before it would delay every typed character by the jump interval.
+fn jump_holds(pending: usize, chunk: usize) -> bool {
+    pending > 0 || chunk > JUMP_BULK_BYTES
+}
+
 pub struct Session {
     pub id: u64,
     pub cfg: SessionConfig,
@@ -1021,7 +1031,8 @@ impl Session {
                     if !ssh_like {
                         self.note_text(&d);
                     }
-                    let d = if self.cfg.jump_scroll {
+                    let d = if self.cfg.jump_scroll && jump_holds(self.jump_pending.len(), d.len())
+                    {
                         self.jump_pending.extend_from_slice(&d);
                         if !self.jump_due() {
                             self.ctx.request_repaint_after(Duration::from_millis(30));
@@ -2817,6 +2828,19 @@ fn altgr_char(key: egui::Key, shift: bool) -> Option<char> {
 #[cfg(not(windows))]
 fn altgr_char(_key: egui::Key, _shift: bool) -> Option<char> {
     None
+}
+
+#[cfg(test)]
+mod jump_scroll_tests {
+    use super::jump_holds;
+
+    #[test]
+    fn key_echo_is_never_held_but_bulk_and_its_tail_are() {
+        assert!(!jump_holds(0, 17)); // a typed character's echo
+        assert!(!jump_holds(0, 1024));
+        assert!(jump_holds(0, 1025)); // bulk output
+        assert!(jump_holds(5000, 17)); // behind held output: order is kept
+    }
 }
 
 #[cfg(test)]
