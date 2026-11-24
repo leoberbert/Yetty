@@ -10,46 +10,81 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/plataforma-Windows-0078D6" alt="Windows">
-  <img src="https://img.shields.io/badge/plataforma-Linux-FCC624" alt="Linux">
-  <img src="https://img.shields.io/badge/linguagem-Rust-DEA584" alt="Rust">
-  <img src="https://img.shields.io/badge/licen%C3%A7a-MIT-green" alt="MIT">
+  <a href="https://github.com/leoberbert/Yetty/releases/latest"><img src="https://img.shields.io/github/v/release/leoberbert/Yetty?style=for-the-badge&logo=github&color=blue" alt="Última versão"></a>
+  <a href="https://github.com/leoberbert/Yetty/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/leoberbert/Yetty/ci.yml?style=for-the-badge&logo=githubactions&logoColor=white&label=CI" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/licen%C3%A7a-MIT-green?style=for-the-badge" alt="Licença MIT"></a>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Windows-10%2F11-0078D6?style=flat-square&logo=windows&logoColor=white" alt="Windows">
+  <img src="https://img.shields.io/badge/Linux-AppImage-FCC624?style=flat-square&logo=linux&logoColor=black" alt="Linux">
+  <img src="https://img.shields.io/badge/Rust-2021-DEA584?style=flat-square&logo=rust&logoColor=black" alt="Rust">
+  <img src="https://img.shields.io/badge/UI-egui-orange?style=flat-square" alt="egui">
+  <img src="https://img.shields.io/github/downloads/leoberbert/Yetty/total?style=flat-square&logo=github&label=downloads" alt="Downloads">
+  <img src="https://img.shields.io/github/stars/leoberbert/Yetty?style=flat-square&logo=github" alt="Stars">
+  <img src="https://img.shields.io/github/issues/leoberbert/Yetty?style=flat-square" alt="Issues">
+</p>
+
+<p align="center">
+  <a href="#-download-e-instalação">📥 Download</a> •
+  <a href="#-primeiros-passos">🚀 Primeiros passos</a> •
+  <a href="#-telas">📸 Telas</a> •
+  <a href="#-funcionalidades">✨ Funcionalidades</a> •
+  <a href="#-atalhos-principais">⚡ Atalhos</a> •
+  <a href="#-reportar-um-problema">🐛 Issues</a>
+</p>
+
+<p align="center">
+  <img src="docs/images/tela-inicial.png" alt="Yetty em ação" width="90%">
 </p>
 
 ---
 
-## Sumário
+## 🎯 Em resumo
 
-- [Por que o Yetty](#por-que-o-yetty)
-- [Inspiração](#inspiração)
-- [Visão geral](#visão-geral)
-- [Download e instalação](#download-e-instalação)
-- [Requisitos](#requisitos)
-- [Compilar e executar](#compilar-e-executar)
-- [Linux](#linux)
-- [Primeiros passos](#primeiros-passos)
-- [Telas](#telas)
-- [Funcionalidades](#funcionalidades)
-  - [Protocolos e conexões](#protocolos-e-conexões)
-  - [Gerenciador de sessões](#gerenciador-de-sessões)
-  - [Abas, painéis e layout](#abas-painéis-e-layout)
-  - [Emulação de terminal e aparência](#emulação-de-terminal-e-aparência)
-  - [Transferência de arquivos](#transferência-de-arquivos)
-  - [Scripts e gravação](#scripts-e-gravação)
-  - [Janela de comandos e Command Manager](#janela-de-comandos-e-command-manager)
-  - [Chaves SSH e credenciais](#chaves-ssh-e-credenciais)
-  - [Log, impressão e snapshots](#log-impressão-e-snapshots)
-  - [Mapa de teclas](#mapa-de-teclas)
-- [Atalhos principais](#atalhos-principais)
-- [Configurações e dados](#configurações-e-dados)
-- [Limitações conhecidas](#limitações-conhecidas)
-- [Documentação de implementação](#documentação-de-implementação)
-- [Reportar um problema](#reportar-um-problema)
-- [Licença](#licença)
+| | |
+|---|---|
+| 🔌 **9 protocolos** | SSH2, SFTP, Telnet, Telnet/TLS, RLogin, Raw, Serial, Shell local e RDP |
+| 🗂️ **Sessões salvas** | Pastas, filtro, arrastar e soltar, senhas cifradas |
+| 🪟 **Abas e painéis** | Lado a lado, grupos de abas e comandos para vários servidores |
+| 📤 **Transferência** | SFTP, Zmodem, Kermit, Xmodem, Ymodem e servidor TFTP |
+| 🤖 **Automação** | Scripts, gravação de teclas, Command Manager e mapa de teclas |
+| 🪶 **Leve e livre** | Sem instalador, sem conta, sem coleta de dados. MIT |
 
 ---
 
-## Por que o Yetty
+## 📑 Sumário
+
+- [💡 Por que o Yetty](#-por-que-o-yetty)
+- [🙌 Inspiração](#-inspiração)
+- [🔭 Visão geral](#-visão-geral)
+- [📥 Download e instalação](#-download-e-instalação)
+- [📋 Requisitos](#-requisitos)
+- [🔨 Compilar e executar](#-compilar-e-executar)
+- [🐧 Linux](#-linux)
+- [🚀 Primeiros passos](#-primeiros-passos)
+- [📸 Telas](#-telas)
+- [✨ Funcionalidades](#-funcionalidades)
+  - [🔌 Protocolos e conexões](#-protocolos-e-conexões)
+  - [📁 Gerenciador de sessões](#-gerenciador-de-sessões)
+  - [🧩 Abas, painéis e layout](#-abas-painéis-e-layout)
+  - [🎨 Emulação de terminal e aparência](#-emulação-de-terminal-e-aparência)
+  - [📤 Transferência de arquivos](#-transferência-de-arquivos)
+  - [🤖 Scripts e gravação](#-scripts-e-gravação)
+  - [💬 Janela de comandos e Command Manager](#-janela-de-comandos-e-command-manager)
+  - [🔑 Chaves SSH e credenciais](#-chaves-ssh-e-credenciais)
+  - [📝 Log, impressão e snapshots](#-log-impressão-e-snapshots)
+  - [🎹 Mapa de teclas](#-mapa-de-teclas)
+- [⚡ Atalhos principais](#-atalhos-principais)
+- [💾 Configurações e dados](#-configurações-e-dados)
+- [🚧 Limitações conhecidas](#-limitações-conhecidas)
+- [📚 Documentação de implementação](#-documentação-de-implementação)
+- [🐛 Reportar um problema](#-reportar-um-problema)
+- [📄 Licença](#-licença)
+
+---
+
+## 💡 Por que o Yetty
 
 Quem trabalha com servidores, redes ou equipamentos acaba com dezenas de janelas de terminal abertas, senhas anotadas em algum lugar e a mesma conexão digitada todo dia. O Yetty existe para resolver isso:
 
@@ -63,7 +98,7 @@ Quem trabalha com servidores, redes ou equipamentos acaba com dezenas de janelas
 
 ---
 
-## Inspiração
+## 🙌 Inspiração
 
 O Yetty nasceu da vontade de ter, de forma livre e gratuita, a praticidade de clientes de terminal consagrados, como o **SecureCRT** e o **QuadCRT**: sessões organizadas em pastas, abas, painéis, transferência de arquivos e muitos detalhes que ajudam no dia a dia de quem administra sistemas.
 
@@ -71,7 +106,7 @@ Não é um clone nem um produto desses programas. É um projeto independente, es
 
 ---
 
-## Visão geral
+## 🔭 Visão geral
 
 Em termos técnicos: cada conexão é uma **sessão** salva em um gerenciador com pastas, e cada sessão aberta vira uma **aba** ou um **painel**. O programa é escrito em Rust, com a interface em [egui](https://github.com/emilk/egui) (via `eframe`) e emulação de terminal com `vt100`.
 
@@ -84,7 +119,7 @@ Pontos de design:
 
 ---
 
-## Download e instalação
+## 📥 Download e instalação
 
 Os arquivos ficam na página de [Releases](https://github.com/leoberbert/Yetty/releases). Cada versão traz um arquivo por plataforma, mais o `.sha256` correspondente.
 
@@ -103,7 +138,7 @@ Conferir o download: `sha256sum -c yetty-*.sha256` (Linux) ou `Get-FileHash` (Wi
 
 ---
 
-## Requisitos
+## 📋 Requisitos
 
 | Item | Detalhe |
 |---|---|
@@ -115,7 +150,7 @@ Conferir o download: `sha256sum -c yetty-*.sha256` (Linux) ou `Get-FileHash` (Wi
 
 ---
 
-## Compilar e executar
+## 🔨 Compilar e executar
 
 ```bash
 # Desenvolvimento
@@ -128,7 +163,7 @@ cargo build --release
 
 ---
 
-## Linux
+## 🐧 Linux
 
 A versão para Linux usa o mesmo código e a mesma interface do Windows. O estado de cada item está em [`PENDENCIAS.md`](PENDENCIAS.md), seções "Versão Linux" e "Laboratório CachyOS".
 
@@ -162,7 +197,7 @@ Para gerar de novo as fontes embutidas: `tools/make-icons-font.py` e `tools/make
 
 ---
 
-## Primeiros passos
+## 🚀 Primeiros passos
 
 1. Abra o Yetty. A janela inicial aparece vazia, com o painel **Session Manager** à esquerda.
 2. Para uma conexão rápida, use **File > Quick Connect** (`Alt+Q`), escolha o protocolo, informe o host e clique em **Connect**.
@@ -177,7 +212,7 @@ Para gerar de novo as fontes embutidas: `tools/make-icons-font.py` e `tools/make
 
 ---
 
-## Telas
+## 📸 Telas
 
 As capturas abaixo são renderizações reais da interface com dados de exemplo.
 
@@ -304,9 +339,9 @@ Editor visual de mapeamento. Você escolhe a tecla (com Ctrl, Alt e Shift) e a f
 
 ---
 
-## Funcionalidades
+## ✨ Funcionalidades
 
-### Protocolos e conexões
+### 🔌 Protocolos e conexões
 
 | Protocolo | Como funciona | Porta padrão |
 |---|---|---|
@@ -322,7 +357,7 @@ Editor visual de mapeamento. Você escolhe a tecla (com Ctrl, Alt e Shift) e a f
 
 Na linha de comando, o protocolo pode ser passado diretamente: `ssh`, `telnet`, `rlogin`, `raw` (ou `tcp`) e `local` (ou `shell`, `cmd`).
 
-### Gerenciador de sessões
+### 📁 Gerenciador de sessões
 
 Painel **Session Manager** à esquerda (`Alt+M`).
 
@@ -335,7 +370,7 @@ Painel **Session Manager** à esquerda (`Alt+M`).
 
 Cada sessão guarda protocolo, host, porta, usuário, método de autenticação, esquema de cores, fonte, tamanho do terminal, scrollback e opções de log.
 
-### Abas, painéis e layout
+### 🧩 Abas, painéis e layout
 
 - Abas com botão de fechar, arrastar para reordenar e clique do meio para fechar.
 - `Ctrl+Tab` e `Ctrl+Shift+Tab` alternam entre abas; `Ctrl+F4` fecha a aba atual.
@@ -346,7 +381,7 @@ Cada sessão guarda protocolo, host, porta, usuário, método de autenticação,
 - Transparência da janela e opção "sempre no topo" em **Window**.
 - Painéis laterais podem ser fixados ou ocultados automaticamente.
 
-### Emulação de terminal e aparência
+### 🎨 Emulação de terminal e aparência
 
 - Emulação **Xterm** com cores ANSI, UTF-8 e caracteres de largura dupla.
 - Tamanho padrão de 80 colunas por 24 linhas; scrollback padrão de 500 linhas.
@@ -363,7 +398,7 @@ Cada sessão guarda protocolo, host, porta, usuário, método de autenticação,
 - **Barras de botões** com nome (menu de contexto do botão ➕) escolhidas por sessão, e **posição inicial** da janela.
 - **Mnemônicos de menu** do SecureCRT: `Alt`+letra abre o menu e as letras sublinhadas escolhem os itens, abrem submenus e marcam opções (menus View, Options, Themes e Window).
 
-### Transferência de arquivos
+### 📤 Transferência de arquivos
 
 Menu **Transfer**.
 
@@ -373,7 +408,7 @@ Menu **Transfer**.
 
 - **Kermit** e **Zmodem**, em envio e recebimento. No Zmodem há a **Zmodem Upload List** e o **Start Zmodem Upload**, que executa antes o comando de upload da sessão (padrão `rz`). Um pedido `sz` do servidor inicia o download sozinho (desligável em Session Options). Testados em loopback e contra `sz`/`rz` (lrzsz 0.12.21) e `gkermit` 2.01 reais, com arquivo de 200 000 bytes.
 
-### Scripts e gravação
+### 🤖 Scripts e gravação
 
 Menu **Script**.
 
@@ -383,13 +418,13 @@ Menu **Script**.
 
 A linguagem é deliberadamente simples, com comandos como `connect`, `send`, `sendln`, `waitfor` e `sleep`. Não há suporte a VBScript nem a Python.
 
-### Janela de comandos e Command Manager
+### 💬 Janela de comandos e Command Manager
 
 - **Command Window** (`Alt+G`): envia texto à sessão ativa ou ao grupo selecionado.
 - **Command Manager** (`Alt+J`): biblioteca de comandos em pastas, com cor, rótulo e descrição.
 - Atalhos `Ctrl+Shift+I`, `Ctrl+Shift+W`, `Ctrl+Shift+T`, `Ctrl+Shift+S` e `Ctrl+Shift+B` acionam ações da janela de comandos.
 
-### Chaves SSH e credenciais
+### 🔑 Chaves SSH e credenciais
 
 Menu **Tools**.
 
@@ -406,14 +441,14 @@ Senhas salvas são cifradas (DPAPI no Windows, lidas só pelo mesmo usuário; Ch
 
 Quando a chave de identidade escolhida é recusada pelo servidor, abre a janela **Public Key Authentication Failed**.
 
-### Log, impressão e snapshots
+### 📝 Log, impressão e snapshots
 
 - **Log Session** grava a saída da sessão em arquivo. **Raw Log** grava o fluxo bruto, com as sequências de controle. **Trace Options** registra o tráfego de protocolo para diagnóstico.
 - **Printing** envia o conteúdo do terminal à impressora.
 - **Snapshots** salvam o conjunto de sessões abertas para reabrir depois.
 - **Multi-line paste confirm**: ver a seção de colagem multilinha acima.
 
-### Mapa de teclas
+### 🎹 Mapa de teclas
 
 **Tools > Keymap Editor** permite:
 
@@ -423,7 +458,7 @@ Quando a chave de identidade escolhida é recusada pelo servidor, abre a janela 
 
 ---
 
-## Atalhos principais
+## ⚡ Atalhos principais
 
 | Atalho | Ação |
 |---|---|
@@ -452,7 +487,7 @@ Quando a chave de identidade escolhida é recusada pelo servidor, abre a janela 
 
 ---
 
-## Configurações e dados
+## 💾 Configurações e dados
 
 - **Configurações**: `%APPDATA%\Yetty\settings.json` no Windows e `~/.config/yetty/settings.json` no Linux. Sessões, comandos, opções e mapa de teclas ficam nesse arquivo.
 - **Migração**: se existir a pasta `%APPDATA%\NexTerm` de uma versão anterior e ainda não existir `%APPDATA%\Yetty`, ela é renomeada automaticamente na primeira execução.
@@ -461,7 +496,7 @@ Quando a chave de identidade escolhida é recusada pelo servidor, abre a janela 
 
 ---
 
-## Limitações conhecidas
+## 🚧 Limitações conhecidas
 
 Estes itens **não estão implementados**:
 
@@ -478,18 +513,18 @@ No Linux, ainda sem teste em hardware: porta serial real, impressão (CUPS) e RD
 
 ---
 
-## Documentação de implementação
+## 📚 Documentação de implementação
 
 O arquivo [`MECHANICS.md`](MECHANICS.md) registra, em 36 rodadas, como cada recurso foi implementado e comparado com o comportamento do programa original que serviu de referência. Os itens não implementados estão descritos lá com o motivo.
 
 ---
 
-## Reportar um problema
+## 🐛 Reportar um problema
 
 Abra uma issue em <https://github.com/leoberbert/Yetty/issues/new/choose> e preencha o formulário de bug: ele pede plataforma (Windows ou Linux), versão, como foi instalado (zip, AppImage ou compilado), sistema (no Linux, distribuição, ambiente gráfico e Wayland ou X11), os passos e se acontece na outra plataforma. Roteiros de teste manual: [`docs/ROTEIRO-REGRESSAO-LINUX.md`](docs/ROTEIRO-REGRESSAO-LINUX.md) e [`docs/CHECKLIST-WINDOWS.md`](docs/CHECKLIST-WINDOWS.md).
 
 ---
 
-## Licença
+## 📄 Licença
 
 Distribuído sob a licença MIT. Veja [`LICENSE`](LICENSE).
